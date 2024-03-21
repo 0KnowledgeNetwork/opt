@@ -64,10 +64,8 @@ func main() {
 
 		buf := new(bytes.Buffer)
 		req.Write(buf)
-
-		msgID, err := session.SendReliableMessage(desc.Name, desc.Provider, buf.Bytes())
-
-		fmt.Fprintf(w, "hello\n")
+		reply, err := session.BlockingSendReliableMessage(desc.Name, desc.Provider, buf.Bytes())
+		fmt.Fprintf(w, reply)
 	}
 	http.HandleFunc("/", handler)
 	http.ListenAndServe(listenAddr, nil)
