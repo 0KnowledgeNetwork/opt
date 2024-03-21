@@ -4,7 +4,7 @@ go 1.21.3
 
 require (
 	github.com/charmbracelet/log v0.3.1
-	github.com/katzenpost/katzenpost v0.0.31-0.20240321065244-dfb02267d2e1
+	github.com/katzenpost/katzenpost v0.0.31-0.20240321214337-61ac7db01742
 )
 
 require (
