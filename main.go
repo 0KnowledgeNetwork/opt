@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"flag"
 	"fmt"
 	"net/http"
@@ -10,6 +11,7 @@ import (
 	"github.com/charmbracelet/log"
 
 	"github.com/katzenpost/katzenpost/client"
+	"github.com/katzenpost/katzenpost/client/config"
 )
 
 func main() {
@@ -44,11 +46,11 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	client, err := New(cfg)
+	c, err := client.New(cfg)
 	if err != nil {
 		panic(err)
 	}
-	session, err := client.NewTOFUSession(context.Background())
+	session, err := c.NewTOFUSession(context.Background())
 	if err != nil {
 		panic(err)
 	}
@@ -65,7 +67,10 @@ func main() {
 		buf := new(bytes.Buffer)
 		req.Write(buf)
 		reply, err := session.BlockingSendReliableMessage(desc.Name, desc.Provider, buf.Bytes())
-		fmt.Fprintf(w, reply)
+		if err != nil {
+			fmt.Fprint(w, "custom 404")
+		}
+		fmt.Fprintf(w, string(reply))
 	}
 	http.HandleFunc("/", handler)
 	http.ListenAndServe(listenAddr, nil)
