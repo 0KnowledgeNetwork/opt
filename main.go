@@ -9,9 +9,11 @@ import (
 	"os"
 
 	"github.com/charmbracelet/log"
+	"github.com/fxamacker/cbor/v2"
 
 	"github.com/katzenpost/katzenpost/client"
 	"github.com/katzenpost/katzenpost/client/config"
+	"github.com/katzenpost/katzenpost/server_plugins/cbor_plugins/http_proxy"
 )
 
 func main() {
@@ -66,7 +68,15 @@ func main() {
 
 		buf := new(bytes.Buffer)
 		req.Write(buf)
-		reply, err := session.BlockingSendReliableMessage(desc.Name, desc.Provider, buf.Bytes())
+
+		response := new(http_proxy.Request)
+		response.Payload = buf.Bytes()
+		blob, err := cbor.Marshal(response)
+		if err != nil {
+			panic(err)
+		}
+
+		reply, err := session.BlockingSendReliableMessage(desc.Name, desc.Provider, blob)
 		if err != nil {
 			fmt.Fprint(w, "custom 404")
 		}
