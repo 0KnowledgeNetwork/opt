@@ -21,7 +21,7 @@ func main() {
 
 	flag.StringVar(&configPath, "config", "", "file path of the client configuration TOML file")
 	flag.StringVar(&logLevel, "log_level", "DEBUG", "logging level could be set to: DEBUG, INFO, WARNING, ERROR, CRITICAL")
-	flag.StringVar(&listenAddr, "listen", "", "destination URL for reverse proxying to")
+	flag.StringVar(&listenAddr, "listen", "", "local socket to listen HTTP on")
 	flag.Parse()
 
 	if listenAddr == "" {
