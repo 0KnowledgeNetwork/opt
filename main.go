@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 
 	"github.com/charmbracelet/log"
@@ -66,11 +67,26 @@ func main() {
 	handler := func(w http.ResponseWriter, req *http.Request) {
 		mylog.Info("received http request")
 
+		// NOTE(david): do we care which headers are set? Probably not.
+		//req.Header["Connection"] = []string{"close"}
+		req.Header = http.Header{}
+
+		myurl, err := url.Parse(req.RequestURI)
+		if err != nil {
+			mylog.Errorf("url.Parse(req.RequestURI) failed: %s", err)
+			return
+		}
+		req.URL = myurl
+		req.RequestURI = ""
+
 		buf := new(bytes.Buffer)
 		req.Write(buf)
 
 		response := new(http_proxy.Request)
 		response.Payload = buf.Bytes()
+
+		mylog.Infof("RAW HTTP REQUEST: %s", string(buf.Bytes()))
+
 		blob, err := cbor.Marshal(response)
 		if err != nil {
 			panic(err)
@@ -80,6 +96,11 @@ func main() {
 		if err != nil {
 			fmt.Fprint(w, "custom 404")
 		}
+
+		mylog.Infof("REPLY: '%s'", reply)
+
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.WriteHeader(http.StatusOK)
 		fmt.Fprintf(w, string(reply))
 	}
 	http.HandleFunc("/", handler)
