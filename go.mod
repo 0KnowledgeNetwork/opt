@@ -5,7 +5,7 @@ go 1.21.3
 require (
 	github.com/charmbracelet/log v0.4.0
 	github.com/fxamacker/cbor/v2 v2.5.0
-	github.com/katzenpost/katzenpost v0.0.32-0.20240322225802-f1dd9456860b
+	github.com/katzenpost/katzenpost v0.0.32-0.20240327211233-db8c1244f342
 )
 
 require (

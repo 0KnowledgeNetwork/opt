@@ -83,30 +83,35 @@ func main() {
 		buf := new(bytes.Buffer)
 		req.Write(buf)
 
-		response := new(http_proxy.Request)
-		response.Payload = buf.Bytes()
+		request := new(http_proxy.Request)
+		request.Payload = buf.Bytes()
 
 		mylog.Infof("RAW HTTP REQUEST: %s", string(buf.Bytes()))
 
-		blob, err := cbor.Marshal(response)
+		blob, err := cbor.Marshal(request)
 		if err != nil {
 			panic(err)
 		}
 
 		rawReply, err := session.BlockingSendReliableMessage(desc.Name, desc.Provider, blob)
 		if err != nil {
-			fmt.Fprint(w, "custom 404")
+			panic(err)
+		}
+		replyBlob := []byte(strings.Trim(string(rawReply), "\x00"))
+
+		response := new(http_proxy.Response)
+		err = cbor.Unmarshal(replyBlob, response)
+		if err != nil {
+			panic(err)
 		}
 
-		reply := strings.Trim(string(rawReply), "\x00")
-
-		mylog.Infof("REPLY: '%s'", reply)
+		mylog.Infof("REPLY: '%s'", replyBlob)
 
 		w.Header().Set("Content-Type", "application/json")
-		w.Header().Set("Content-Length", fmt.Sprintf("%d", len(reply)))
+		w.Header().Set("Content-Length", fmt.Sprintf("%d", len(replyBlob)))
 
 		w.WriteHeader(http.StatusOK)
-		fmt.Fprintf(w, string(reply))
+		fmt.Fprintf(w, string(replyBlob))
 	}
 	http.HandleFunc("/", handler)
 	http.ListenAndServe(listenAddr, nil)
