@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"strings"
 
 	"github.com/charmbracelet/log"
 	"github.com/fxamacker/cbor/v2"
@@ -97,21 +96,27 @@ func main() {
 		if err != nil {
 			panic(err)
 		}
-		replyBlob := []byte(strings.Trim(string(rawReply), "\x00"))
 
+		// use the streaming decoder and simply return the first cbor object
+		// and then discard the decoder and buffer
 		response := new(http_proxy.Response)
-		err = cbor.Unmarshal(replyBlob, response)
+		dec := cbor.NewDecoder(bytes.NewReader(rawReply))
+		err = dec.Decode(response)
 		if err != nil {
 			panic(err)
 		}
 
-		mylog.Infof("REPLY: '%s'", replyBlob)
+		mylog.Infof("REPLY: '%s'", rawReply)
 
-		w.Header().Set("Content-Type", "application/json")
-		w.Header().Set("Content-Length", fmt.Sprintf("%d", len(replyBlob)))
-
-		w.WriteHeader(http.StatusOK)
-		fmt.Fprintf(w, string(replyBlob))
+		if response.ChunksTotal == 0 {
+			w.Header().Set("Content-Type", "application/json")
+			w.Header().Set("Content-Length", fmt.Sprintf("%d", len(rawReply)))
+			w.WriteHeader(http.StatusOK)
+			fmt.Fprintf(w, string(response.Payload))
+		} else {
+			// XXX TODO(david):
+			// do clever things with SURBs
+		}
 	}
 	http.HandleFunc("/", handler)
 	http.ListenAndServe(listenAddr, nil)
