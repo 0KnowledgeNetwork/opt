@@ -68,9 +68,12 @@ func main() {
 	handler := func(w http.ResponseWriter, req *http.Request) {
 		mylog.Info("received http request")
 
-		// NOTE(david): do we care which headers are set? Probably not.
-		//req.Header["Connection"] = []string{"close"}
-		req.Header = http.Header{}
+		// we care about some headers, but not most
+		req.Header = http.Header{
+			// "Connection":     []string{"close"},
+			"Content-Type":   []string{req.Header.Get("Content-Type")},
+			"Content-Length": []string{req.Header.Get("Content-Length")},
+		}
 
 		myurl, err := url.Parse(req.RequestURI)
 		if err != nil {
