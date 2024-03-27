@@ -102,7 +102,9 @@ func main() {
 
 		mylog.Infof("REPLY: '%s'", reply)
 
-		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Content-Length", fmt.Sprintf("%d", len(reply)))
+
 		w.WriteHeader(http.StatusOK)
 		fmt.Fprintf(w, string(reply))
 	}
