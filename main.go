@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strings"
 
 	"github.com/charmbracelet/log"
 	"github.com/fxamacker/cbor/v2"
@@ -92,10 +93,12 @@ func main() {
 			panic(err)
 		}
 
-		reply, err := session.BlockingSendReliableMessage(desc.Name, desc.Provider, blob)
+		rawReply, err := session.BlockingSendReliableMessage(desc.Name, desc.Provider, blob)
 		if err != nil {
 			fmt.Fprint(w, "custom 404")
 		}
+
+		reply := strings.Trim(string(rawReply), "\x00")
 
 		mylog.Infof("REPLY: '%s'", reply)
 
