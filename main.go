@@ -11,7 +11,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"strings"
 
 	"github.com/charmbracelet/log"
 	"github.com/fxamacker/cbor/v2"
@@ -104,12 +103,12 @@ func (s *Server) Handler(w http.ResponseWriter, req *http.Request) {
 	buf := new(bytes.Buffer)
 	req.Write(buf)
 
-	response := new(http_proxy.Request)
-	response.Payload = buf.Bytes()
+	request := new(http_proxy.Request)
+	request.Payload = buf.Bytes()
 
 	s.log.Infof("RAW HTTP REQUEST: %s", string(buf.Bytes()))
 
-	blob, err := cbor.Marshal(response)
+	blob, err := cbor.Marshal(request)
 	if err != nil {
 		panic(err)
 	}
@@ -119,13 +118,19 @@ func (s *Server) Handler(w http.ResponseWriter, req *http.Request) {
 		fmt.Fprint(w, "custom 404")
 	}
 
-	reply := strings.Trim(string(rawReply), "\x00")
+	// use the streaming decoder and simply return the first cbor object
+	// and then discard the decoder and buffer
+	response := new(http_proxy.Response)
+	dec := cbor.NewDecoder(bytes.NewReader(rawReply))
+	err = dec.Decode(response)
+	if err != nil {
+		panic(err)
+	}
 
-	s.log.Infof("REPLY: '%s'", reply)
+	s.log.Infof("REPLY: '%s'", rawReply)
 
 	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Content-Length", fmt.Sprintf("%d", len(reply)))
-
+	w.Header().Set("Content-Length", fmt.Sprintf("%d", len(rawReply)))
 	w.WriteHeader(http.StatusOK)
-	fmt.Fprintf(w, string(reply))
+	fmt.Fprintf(w, string(response.Payload))
 }
