@@ -5,7 +5,7 @@ go 1.21.3
 require (
 	github.com/charmbracelet/log v0.4.0
 	github.com/fxamacker/cbor/v2 v2.5.0
-	github.com/katzenpost/katzenpost v0.0.32-0.20240322225802-f1dd9456860b
+	github.com/katzenpost/katzenpost v0.0.32-0.20240329174237-ce9b083418db
 )
 
 require (
@@ -22,6 +22,8 @@ require (
 	github.com/henrydcase/nobs v0.0.0-20230313231516-25b66236df73 // indirect
 	github.com/katzenpost/chacha20 v0.0.0-20190910113340-7ce890d6a556 // indirect
 	github.com/katzenpost/circl v1.3.9-0.20240222183521-1cd9a34e9a0c // indirect
+	github.com/katzenpost/client v0.0.35 // indirect
+	github.com/katzenpost/core v0.0.14 // indirect
 	github.com/katzenpost/hpqc v0.0.17 // indirect
 	github.com/katzenpost/nyquist v0.0.10-0.20240228185835-816d14da49ee // indirect
 	github.com/katzenpost/sntrup4591761 v0.0.0-20231024131303-8755eb1986b8 // indirect

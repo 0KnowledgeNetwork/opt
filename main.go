@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: © 2023 David Stainton
+// SPDX-License-Identifier: AGPL-3.0-only
+
 package main
 
 import (
@@ -15,6 +18,7 @@ import (
 
 	"github.com/katzenpost/katzenpost/client"
 	"github.com/katzenpost/katzenpost/client/config"
+	"github.com/katzenpost/katzenpost/client/utils"
 	"github.com/katzenpost/katzenpost/server_plugins/cbor_plugins/http_proxy"
 )
 
@@ -65,52 +69,63 @@ func main() {
 	}
 
 	// http server
-	handler := func(w http.ResponseWriter, req *http.Request) {
-		mylog.Info("received http request")
-
-		// we care about some headers, but not most
-		req.Header = http.Header{
-			// "Connection":     []string{"close"},
-			"Content-Type":   []string{req.Header.Get("Content-Type")},
-			"Content-Length": []string{req.Header.Get("Content-Length")},
-		}
-
-		myurl, err := url.Parse(req.RequestURI)
-		if err != nil {
-			mylog.Errorf("url.Parse(req.RequestURI) failed: %s", err)
-			return
-		}
-		req.URL = myurl
-		req.RequestURI = ""
-
-		buf := new(bytes.Buffer)
-		req.Write(buf)
-
-		response := new(http_proxy.Request)
-		response.Payload = buf.Bytes()
-
-		mylog.Infof("RAW HTTP REQUEST: %s", string(buf.Bytes()))
-
-		blob, err := cbor.Marshal(response)
-		if err != nil {
-			panic(err)
-		}
-
-		rawReply, err := session.BlockingSendReliableMessage(desc.Name, desc.Provider, blob)
-		if err != nil {
-			fmt.Fprint(w, "custom 404")
-		}
-
-		reply := strings.Trim(string(rawReply), "\x00")
-
-		mylog.Infof("REPLY: '%s'", reply)
-
-		w.Header().Set("Content-Type", "application/json")
-		w.Header().Set("Content-Length", fmt.Sprintf("%d", len(reply)))
-
-		w.WriteHeader(http.StatusOK)
-		fmt.Fprintf(w, string(reply))
+	server := &Server{
+		log:     mylog,
+		session: session,
+		target:  desc,
 	}
-	http.HandleFunc("/", handler)
+	http.HandleFunc("/", server.Handler)
 	http.ListenAndServe(listenAddr, nil)
+}
+
+type Server struct {
+	log     *log.Logger
+	session *client.Session
+	target  *utils.ServiceDescriptor
+}
+
+func (s *Server) Handler(w http.ResponseWriter, req *http.Request) {
+	s.log.Info("received http request")
+
+	// we care about some headers, but not most
+	req.Header = http.Header{
+		"Content-Type":   []string{req.Header.Get("Content-Type")},
+		"Content-Length": []string{req.Header.Get("Content-Length")},
+	}
+
+	myurl, err := url.Parse(req.RequestURI)
+	if err != nil {
+		s.log.Errorf("url.Parse(req.RequestURI) failed: %s", err)
+		return
+	}
+	req.URL = myurl
+	req.RequestURI = ""
+
+	buf := new(bytes.Buffer)
+	req.Write(buf)
+
+	response := new(http_proxy.Request)
+	response.Payload = buf.Bytes()
+
+	s.log.Infof("RAW HTTP REQUEST: %s", string(buf.Bytes()))
+
+	blob, err := cbor.Marshal(response)
+	if err != nil {
+		panic(err)
+	}
+
+	rawReply, err := s.session.BlockingSendReliableMessage(s.target.Name, s.target.Provider, blob)
+	if err != nil {
+		fmt.Fprint(w, "custom 404")
+	}
+
+	reply := strings.Trim(string(rawReply), "\x00")
+
+	s.log.Infof("REPLY: '%s'", reply)
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Content-Length", fmt.Sprintf("%d", len(reply)))
+
+	w.WriteHeader(http.StatusOK)
+	fmt.Fprintf(w, string(reply))
 }
