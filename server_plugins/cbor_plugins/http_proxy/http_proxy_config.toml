@@ -1,0 +1,6 @@
+[Networks]
+  ethereum = "https://ethereum-rpc.publicnode.com"
+  "ethereum/sepolia" = "https://ethereum-sepolia-rpc.publicnode.com"
+  mina = "https://proxy.minaexplorer.com/graphql"
+  "mina/berkeley" = "https://proxy.berkeley.minaexplorer.com/graphql"
+  "mina/devnet" = "https://proxy.devnet.minaexplorer.com/graphql"
