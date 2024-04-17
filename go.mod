@@ -1,18 +1,19 @@
-module github.com/0KnowledgeNetwork/app-walletshield
+module 0KnowledgeNetwork
 
 go 1.21.3
 
 require (
+	github.com/BurntSushi/toml v1.3.2
 	github.com/charmbracelet/log v0.4.0
-	github.com/fxamacker/cbor/v2 v2.5.0
-	github.com/katzenpost/katzenpost v0.0.32-0.20240329174237-ce9b083418db
+	github.com/fxamacker/cbor/v2 v2.6.0
+	github.com/katzenpost/katzenpost v0.0.31
+	gopkg.in/op/go-logging.v1 v1.0.0-20160211212156-b2cb9fa56473
 )
 
 require (
 	codeberg.org/vula/highctidh v1.0.2024012400 // indirect
 	filippo.io/edwards25519 v1.0.0 // indirect
 	filippo.io/mlkem768 v0.0.0-20240221181710-5ce91625fdc1 // indirect
-	github.com/BurntSushi/toml v1.3.2 // indirect
 	github.com/aymanbagabas/go-osc52/v2 v2.0.1 // indirect
 	github.com/charmbracelet/lipgloss v0.10.0 // indirect
 	github.com/cloudflare/circl v1.3.7 // indirect
@@ -22,8 +23,6 @@ require (
 	github.com/henrydcase/nobs v0.0.0-20230313231516-25b66236df73 // indirect
 	github.com/katzenpost/chacha20 v0.0.0-20190910113340-7ce890d6a556 // indirect
 	github.com/katzenpost/circl v1.3.9-0.20240222183521-1cd9a34e9a0c // indirect
-	github.com/katzenpost/client v0.0.35 // indirect
-	github.com/katzenpost/core v0.0.14 // indirect
 	github.com/katzenpost/hpqc v0.0.17 // indirect
 	github.com/katzenpost/nyquist v0.0.10-0.20240228185835-816d14da49ee // indirect
 	github.com/katzenpost/sntrup4591761 v0.0.0-20231024131303-8755eb1986b8 // indirect
@@ -48,5 +47,4 @@ require (
 	golang.org/x/sys v0.16.0 // indirect
 	golang.org/x/text v0.14.0 // indirect
 	gopkg.in/eapache/channels.v1 v1.1.0 // indirect
-	gopkg.in/op/go-logging.v1 v1.0.0-20160211212156-b2cb9fa56473 // indirect
 )

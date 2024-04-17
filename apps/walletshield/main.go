@@ -14,11 +14,11 @@ import (
 
 	"github.com/charmbracelet/log"
 	"github.com/fxamacker/cbor/v2"
-
 	"github.com/katzenpost/katzenpost/client"
 	"github.com/katzenpost/katzenpost/client/config"
 	"github.com/katzenpost/katzenpost/client/utils"
-	"github.com/katzenpost/katzenpost/server_plugins/cbor_plugins/http_proxy"
+
+	"0KnowledgeNetwork/server_plugins/cbor_plugins/http_proxy"
 )
 
 func main() {
