@@ -1,4 +1,4 @@
-module 0KnowledgeNetwork
+module github.com/0KnowledgeNetwork/opt
 
 go 1.21.3
 
@@ -15,6 +15,7 @@ require (
 	filippo.io/edwards25519 v1.0.0 // indirect
 	filippo.io/mlkem768 v0.0.0-20240221181710-5ce91625fdc1 // indirect
 	github.com/aymanbagabas/go-osc52/v2 v2.0.1 // indirect
+	github.com/carlmjohnson/versioninfo v0.22.5 // indirect
 	github.com/charmbracelet/lipgloss v0.10.0 // indirect
 	github.com/cloudflare/circl v1.3.7 // indirect
 	github.com/eapache/queue v1.1.0 // indirect
