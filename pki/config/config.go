@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/BurntSushi/toml"
+
 	"github.com/katzenpost/hpqc/rand"
 	signpem "github.com/katzenpost/hpqc/sign/pem"
 
@@ -228,6 +230,9 @@ type Server struct {
 	// Identifier is the human readable identifier for the node (eg: FQDN).
 	Identifier string
 
+	// WireKEMScheme is the wire protocol KEM scheme to use.
+	WireKEMScheme string
+
 	// Addresses are the IP address/port combinations that the server will bind
 	// to for incoming connections.
 	Addresses []string
@@ -273,7 +278,7 @@ type Config struct {
 // FixupAndValidate applies defaults to config entries and validates the
 // supplied configuration.  Most people should call one of the Load variants
 // instead.
-func (cfg *Config) FixupAndValidate() error {
+func (cfg *Config) FixupAndValidate(forceGenOnly bool) error {
 
 	if cfg.SphinxGeometry == nil {
 		return errors.New("config: No SphinxGeometry block was present")
@@ -312,6 +317,11 @@ func (cfg *Config) FixupAndValidate() error {
 	if err := cfg.Debug.validate(); err != nil {
 		return err
 	}
+
+	if forceGenOnly {
+		return nil
+	}
+
 	cfg.Parameters.applyDefaults()
 	cfg.Debug.applyDefaults()
 
@@ -331,4 +341,33 @@ func (cfg *Config) FixupAndValidate() error {
 	}
 
 	return nil
+}
+
+// Load parses and validates the provided buffer b as a config file body and
+// returns the Config.
+func Load(b []byte, forceGenOnly bool) (*Config, error) {
+	cfg := new(Config)
+	err := toml.Unmarshal(b, cfg)
+	if err != nil {
+		return nil, err
+	}
+	if err := cfg.FixupAndValidate(forceGenOnly); err != nil {
+		return nil, err
+	}
+
+	if forceGenOnly {
+		cfg.Debug.GenerateOnly = true
+	}
+
+	return cfg, nil
+}
+
+// LoadFile loads, parses and validates the provided file and returns the
+// Config.
+func LoadFile(f string, forceGenOnly bool) (*Config, error) {
+	b, err := os.ReadFile(f)
+	if err != nil {
+		return nil, err
+	}
+	return Load(b, forceGenOnly)
 }
