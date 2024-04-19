@@ -9,7 +9,7 @@ import (
 
 	"github.com/carlmjohnson/versioninfo"
 
-	"github.com/0knowledgenetwork/opt/config"
+	"github.com/0KnowledgeNetwork/opt/pki/config"
 )
 
 func main() {

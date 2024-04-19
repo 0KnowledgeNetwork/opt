@@ -13,11 +13,12 @@ import (
 	"path/filepath"
 
 	"github.com/fxamacker/cbor/v2"
-	"github.com/katzenpost/katzenpost/core/log"
-	"github.com/katzenpost/katzenpost/server/cborplugin"
 	"gopkg.in/op/go-logging.v1"
 
-	"0KnowledgeNetwork/server_plugins/cbor_plugins/http_proxy"
+	"github.com/katzenpost/katzenpost/core/log"
+	"github.com/katzenpost/katzenpost/server/cborplugin"
+
+	"github.com/0KnowledgeNetwork/opt/server_plugins/cbor_plugins/http_proxy"
 )
 
 const MaxPayloadSize = 15000 - 20

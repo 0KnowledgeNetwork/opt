@@ -23,7 +23,7 @@ import (
 	"github.com/katzenpost/katzenpost/core/sphinx/geo"
 	"github.com/katzenpost/katzenpost/core/utils"
 
-	"github.com/0knowledgenetwork/opt/config"
+	"github.com/0KnowledgeNetwork/opt/pki/config"
 )
 
 // ErrGenerateOnly is the error returned when the server initialization
