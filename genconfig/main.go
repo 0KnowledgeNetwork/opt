@@ -39,7 +39,6 @@ import (
 	cConfig "github.com/katzenpost/katzenpost/client/config"
 	"github.com/katzenpost/katzenpost/core/cert"
 	"github.com/katzenpost/katzenpost/core/sphinx/geo"
-	"github.com/katzenpost/katzenpost/core/wire"
 	sConfig "github.com/katzenpost/katzenpost/server/config"
 
 	"github.com/0KnowledgeNetwork/opt/server_plugins/cbor_plugins/http_proxy"
@@ -61,6 +60,7 @@ type katzenpost struct {
 	logLevel  string
 	logWriter io.Writer
 
+	wireKEMScheme     string
 	sphinxGeometry    *geo.Geometry
 	votingAuthConfigs []*vConfig.Config
 	authorities       map[[32]byte]*vConfig.Authority
@@ -92,12 +92,13 @@ func (s *katzenpost) genClientCfg() error {
 	os.Mkdir(filepath.Join(s.outDir, "client"), 0700)
 	cfg := new(cConfig.Config)
 
+	cfg.WireKEMScheme = s.wireKEMScheme
 	cfg.SphinxGeometry = s.sphinxGeometry
 
 	s.clientIdx++
 
 	// Logging section.
-	cfg.Logging = &cConfig.Logging{File: "/tmp/client.log", Level: s.logLevel}
+	cfg.Logging = &cConfig.Logging{File: "", Level: s.logLevel}
 
 	// UpstreamProxy section
 	cfg.UpstreamProxy = &cConfig.UpstreamProxy{Type: "none"}
@@ -144,6 +145,7 @@ func (s *katzenpost) genNodeConfig(isProvider bool, isVoting bool) error {
 
 	// Server section.
 	cfg.Server = new(sConfig.Server)
+	cfg.Server.WireKEM = s.wireKEMScheme
 	cfg.Server.Identifier = n
 	cfg.Server.Addresses = []string{fmt.Sprintf("%s:%d", s.bindAddr, s.lastPort)}
 	cfg.Server.DataDir = filepath.Join(s.baseDir, n)
@@ -197,17 +199,6 @@ func (s *katzenpost) genNodeConfig(isProvider bool, isVoting bool) error {
 			cfg.Provider.TrustOnFirstUse = true
 			cfg.Provider.EnableEphemeralClients = true
 		} else {
-			spoolCfg := &sConfig.CBORPluginKaetzchen{
-				Capability:     "spool",
-				Endpoint:       "+spool",
-				Command:        s.baseDir + "/memspool" + s.binSuffix,
-				MaxConcurrency: 1,
-				Config: map[string]interface{}{
-					"data_store": s.baseDir + "/" + cfg.Server.Identifier + "/memspool.storage",
-					"log_dir":    s.baseDir + "/" + cfg.Server.Identifier,
-				},
-			}
-
 			httpProxyCfg := &sConfig.CBORPluginKaetzchen{
 				Capability:     "http_proxy",
 				Endpoint:       "http_proxy",
@@ -241,25 +232,8 @@ func (s *katzenpost) genNodeConfig(isProvider bool, isVoting bool) error {
 			}
 			f.Close()
 
-			cfg.Provider.CBORPluginKaetzchen = []*sConfig.CBORPluginKaetzchen{spoolCfg, httpProxyCfg}
-
-			if !s.hasPanda {
-				pandaCfg := &sConfig.CBORPluginKaetzchen{
-					Capability:     "panda",
-					Endpoint:       "+panda",
-					Command:        s.baseDir + "/panda_server" + s.binSuffix,
-					MaxConcurrency: 1,
-					Config: map[string]interface{}{
-						"fileStore": s.baseDir + "/" + cfg.Server.Identifier + "/panda.storage",
-						"log_dir":   s.baseDir + "/" + cfg.Server.Identifier,
-						"log_level": s.logLevel,
-					},
-				}
-				cfg.Provider.CBORPluginKaetzchen = append(cfg.Provider.CBORPluginKaetzchen, pandaCfg)
-				s.hasPanda = true
-			}
+			cfg.Provider.CBORPluginKaetzchen = []*sConfig.CBORPluginKaetzchen{httpProxyCfg}
 		}
-
 		echoCfg := new(sConfig.Kaetzchen)
 		echoCfg.Capability = "echo"
 		echoCfg.Endpoint = "+echo"
@@ -273,7 +247,7 @@ func (s *katzenpost) genNodeConfig(isProvider bool, isVoting bool) error {
 	return cfg.FixupAndValidate()
 }
 
-func (s *katzenpost) genVotingAuthoritiesCfg(numAuthorities int, parameters *vConfig.Parameters, nrLayers int) error {
+func (s *katzenpost) genVotingAuthoritiesCfg(numAuthorities int, parameters *vConfig.Parameters, nrLayers int, wirekem string) error {
 
 	configs := []*vConfig.Config{}
 
@@ -283,9 +257,10 @@ func (s *katzenpost) genVotingAuthoritiesCfg(numAuthorities int, parameters *vCo
 		cfg := new(vConfig.Config)
 		cfg.SphinxGeometry = s.sphinxGeometry
 		cfg.Server = &vConfig.Server{
-			Identifier: fmt.Sprintf("auth%d", i),
-			Addresses:  []string{fmt.Sprintf("%s:%d", s.bindAddr, s.lastPort)},
-			DataDir:    filepath.Join(s.baseDir, fmt.Sprintf("auth%d", i)),
+			WireKEMScheme: s.wireKEMScheme,
+			Identifier:    fmt.Sprintf("auth%d", i),
+			Addresses:     []string{fmt.Sprintf("%s:%d", s.bindAddr, s.lastPort)},
+			DataDir:       filepath.Join(s.baseDir, fmt.Sprintf("auth%d", i)),
 		}
 		os.Mkdir(filepath.Join(s.outDir, cfg.Server.Identifier), 0700)
 		s.lastPort += 1
@@ -302,11 +277,12 @@ func (s *katzenpost) genVotingAuthoritiesCfg(numAuthorities int, parameters *vCo
 		}
 		configs = append(configs, cfg)
 		idKey := cfgIdKey(cfg, s.outDir)
-		linkKey := cfgLinkKey(cfg, s.outDir)
+		linkKey := cfgLinkKey(cfg, s.outDir, wirekem)
 		authority := &vConfig.Authority{
 			Identifier:        fmt.Sprintf("auth%d", i),
 			IdentityPublicKey: idKey,
 			LinkPublicKey:     linkKey,
+			WireKEMScheme:     wirekem,
 			Addresses:         cfg.Server.Addresses,
 		}
 		s.authorities[hash.Sum256From(idKey)] = authority
@@ -360,6 +336,7 @@ func main() {
 	binSuffix := flag.String("S", "", "suffix for binaries in docker-compose.yml")
 	logLevel := flag.String("log_level", "DEBUG", "logging level could be set to: DEBUG, INFO, NOTICE, WARNING, ERROR, CRITICAL")
 	omitTopology := flag.Bool("D", false, "Dynamic topology (omit fixed topology definition)")
+	wirekem := flag.String("wirekem", "", "Name of the KEM Scheme to be used with wire protocol")
 	kem := flag.String("kem", "", "Name of the KEM Scheme to be used with Sphinx")
 	nike := flag.String("nike", "x25519", "Name of the NIKE Scheme to be used with Sphinx")
 	UserForwardPayloadLength := flag.Int("UserForwardPayloadLength", 2000, "UserForwardPayloadLength")
@@ -377,6 +354,10 @@ func main() {
 	lMMax := flag.Uint64("lMMax", 100, "Maximum delay for LambdaM")
 
 	flag.Parse()
+
+	if *wirekem == "" {
+		log.Fatal("wire KEM must be set")
+	}
 
 	if *kem == "" && *nike == "" {
 		log.Fatal("either nike or kem must be set")
@@ -400,6 +381,11 @@ func main() {
 	}
 
 	s := &katzenpost{}
+
+	s.wireKEMScheme = *wirekem
+	if kemschemes.ByName(*wirekem) == nil {
+		log.Fatal("invalid wire KEM scheme")
+	}
 
 	s.baseDir = *baseDir
 	s.outDir = *outDir
@@ -441,7 +427,7 @@ func main() {
 
 	if *voting {
 		// Generate the voting authority configurations
-		err := s.genVotingAuthoritiesCfg(*nrVoting, parameters, *nrLayers)
+		err := s.genVotingAuthoritiesCfg(*nrVoting, parameters, *nrLayers, *wirekem)
 		if err != nil {
 			log.Fatalf("getVotingAuthoritiesCfg failed: %s", err)
 		}
@@ -578,7 +564,7 @@ func cfgIdKey(cfg interface{}, outDir string) sign.PublicKey {
 	return idPubKey
 }
 
-func cfgLinkKey(cfg interface{}, outDir string) kem.PublicKey {
+func cfgLinkKey(cfg interface{}, outDir string, kemScheme string) kem.PublicKey {
 	var linkpriv string
 	var linkpublic string
 
@@ -590,7 +576,7 @@ func cfgLinkKey(cfg interface{}, outDir string) kem.PublicKey {
 		panic("wrong type")
 	}
 
-	linkPubKey, linkPrivKey, err := wire.DefaultScheme.GenerateKeyPair()
+	linkPubKey, linkPrivKey, err := kemschemes.ByName(kemScheme).GenerateKeyPair()
 	if err != nil {
 		panic(err)
 	}
