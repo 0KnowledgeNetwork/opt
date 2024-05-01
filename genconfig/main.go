@@ -41,7 +41,8 @@ import (
 	"github.com/katzenpost/katzenpost/core/sphinx/geo"
 	"github.com/katzenpost/katzenpost/core/wire"
 	sConfig "github.com/katzenpost/katzenpost/server/config"
-	"github.com/katzenpost/katzenpost/server_plugins/cbor_plugins/http_proxy"
+
+	"github.com/0KnowledgeNetwork/opt/server_plugins/cbor_plugins/http_proxy"
 )
 
 const (
