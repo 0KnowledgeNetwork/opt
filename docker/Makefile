@@ -92,7 +92,12 @@ run: $(docker_compose_yml) $(net_name)/server.$(distro) $(net_name)/voting.$(dis
 	&& DOCKER_USER=${docker_user} $(docker_compose) up --remove-orphans
 	cd $(net_name) && rm -v running.stamp
 
-start: $(docker_compose_yml) $(net_name)/server.$(distro) $(net_name)/voting.$(distro)
+clone-repo:
+	if [ ! -d "../katzenpost" ]; then \
+		git clone https://github.com/katzenpost/katzenpost.git ../katzenpost; \
+	fi
+
+start: clone-repo $(docker_compose_yml) $(net_name)/server.$(distro) $(net_name)/voting.$(distro)
 	cd $(net_name); DOCKER_USER=${docker_user} $(docker_compose) up --remove-orphans -d; $(docker_compose) top
 	touch $(net_name)/running.stamp
 
@@ -127,7 +132,7 @@ debian_base.stamp:
 	touch $@
 
 alpine_base.stamp:
-	$(docker) run $(replace_name) katzenpost_alpine_base docker.io/golang:1.21-alpine sh -c 'adduser katzenpost --gecos "" --disabled-password  && apk update && apk upgrade && apk add gcc musl-dev make' \
+	$(docker) run $(replace_name) katzenpost_alpine_base docker.io/golang:1.21-alpine sh -c 'adduser katzenpost --gecos "" --disabled-password  && apk update && apk upgrade && apk add gcc musl-dev make libc6-compat' \
 	&& $(docker) commit katzenpost_alpine_base katzenpost-alpine_base \
 	&& $(docker) rm katzenpost_alpine_base
 	touch $@
@@ -152,13 +157,20 @@ go-mod-upgrade: $(distro)_go_mod.stamp
 		&& $(docker) commit katzenpost_$(distro)_go_mod katzenpost-$(distro)_go_mod \
 		&& $(docker) rm katzenpost_$(distro)_go_mod
 
-$(net_name)/server.$(distro): $(distro)_go_mod.stamp $(docker_compose_yml)
+$(net_name)/server.$(distro): $(distro)_go_mod.stamp $(docker_compose_yml) server_build
 		$(docker) run ${docker_args} $(mount_net_name) --rm katzenpost-$(distro)_go_mod \
-			$(sh) -c 'cd server && make $(make_args) testnet-build testnet-install'
+
+server_build:
+	@echo "Building the Katzenpost server directly into the target directory..."
+	cd ../katzenpost/server/cmd/server && \
+	go mod verify && \
+	go build -trimpath -ldflags ${ldflags} -o ../../../../docker/voting_mixnet/server.alpine
+	@echo "Server built successfully."
+
 
 $(net_name)/voting.$(distro): $(distro)_go_mod.stamp $(docker_compose_yml)
 		$(docker) run ${docker_args} $(mount_net_name) --rm katzenpost-$(distro)_go_mod \
-			$(sh) -c 'cd authority && make $(make_args) cmd/voting/voting cmd/fetch/fetch && \
+			$(sh) -c 'cd katzenpost/authority && make $(make_args) cmd/voting/voting cmd/fetch/fetch && \
 			mv cmd/voting/voting /$(net_name)/voting.$(distro) && \
 			mv cmd/fetch/fetch /$(net_name)/fetch.$(distro)'
 
