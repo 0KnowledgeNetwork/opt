@@ -176,6 +176,7 @@ $(net_name)/ping.$(distro): $(distro)_go_mod.stamp
 $(net_name)/http_proxy.$(distro): $(distro)_go_mod.stamp $(docker_compose_yml)
 	$(docker) run $(docker_args) katzenpost-$(distro)_go_mod \
 	go build -trimpath -ldflags $(ldflags) -o /$(net_name)/http_proxy.$(distro) $(opt_workspace)/server_plugins/cbor_plugins/http_proxy/cmd/http_proxy
+	@echo "http_proxy Build complete."
 
 clean-images: stop
 	@-for distro in $(DISTROS); do \
