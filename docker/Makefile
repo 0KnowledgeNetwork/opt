@@ -63,7 +63,8 @@ uid?=$(shell [ "$$SUDO_UID" != "" ] && echo "$$SUDO_UID" || id -u)
 gid?=$(shell [ "$$SUDO_GID" != "" ] && echo "$$SUDO_GID" || id -g)
 
 docker_user?=$(shell if echo ${docker}|grep -q podman; then echo 0:0; else echo ${uid}:${gid}; fi)
-docker_args=--user ${docker_user} --volume $(shell readlink -f ..):/go/katzenpost --workdir /go/katzenpost
+opt_workspace=/go/opt
+docker_args=--user ${docker_user} --volume $(shell readlink -f ..):$(opt_workspace) --workdir $(opt_workspace)
 
 replace_name=$(shell if echo ${docker}|grep -q podman; then echo " --replace --name"; else echo " --name"; fi)
 i_if_podman=$(shell if echo ${docker}|grep -q podman; then echo " -i"; else echo; fi)
@@ -97,7 +98,7 @@ clone-repo:
 		git clone https://github.com/katzenpost/katzenpost.git ../katzenpost; \
 	fi
 
-start: clone-repo $(docker_compose_yml) $(net_name)/server.$(distro) $(net_name)/voting.$(distro)
+start: clone-repo $(docker_compose_yml) $(net_name)/http_proxy.$(distro) $(net_name)/server.$(distro) $(net_name)/voting.$(distro)
 	cd $(net_name); DOCKER_USER=${docker_user} $(docker_compose) up --remove-orphans -d; $(docker_compose) top
 	touch $(net_name)/running.stamp
 
@@ -132,7 +133,7 @@ debian_base.stamp:
 	touch $@
 
 alpine_base.stamp:
-	$(docker) run $(replace_name) katzenpost_alpine_base docker.io/golang:1.21-alpine sh -c 'adduser katzenpost --gecos "" --disabled-password  && apk update && apk upgrade && apk add gcc musl-dev make libc6-compat' \
+	$(docker) run $(replace_name) katzenpost_alpine_base docker.io/golang:1.21-alpine sh -c 'adduser katzenpost --gecos "" --disabled-password  && apk update && apk upgrade && apk add gcc musl-dev make' \
 	&& $(docker) commit katzenpost_alpine_base katzenpost-alpine_base \
 	&& $(docker) rm katzenpost_alpine_base
 	touch $@
@@ -157,16 +158,9 @@ go-mod-upgrade: $(distro)_go_mod.stamp
 		&& $(docker) commit katzenpost_$(distro)_go_mod katzenpost-$(distro)_go_mod \
 		&& $(docker) rm katzenpost_$(distro)_go_mod
 
-$(net_name)/server.$(distro): $(distro)_go_mod.stamp $(docker_compose_yml) server_build
-		$(docker) run ${docker_args} $(mount_net_name) --rm katzenpost-$(distro)_go_mod \
-
-server_build:
-	@echo "Building the Katzenpost server directly into the target directory..."
-	cd ../katzenpost/server/cmd/server && \
-	go mod verify && \
-	go build -trimpath -ldflags ${ldflags} -o ../../../../docker/voting_mixnet/server.alpine
-	@echo "Server built successfully."
-
+$(net_name)/server.$(distro): $(distro)_go_mod.stamp $(docker_compose_yml)
+	$(docker) run $(docker_args) katzenpost-$(distro)_go_mod \
+	go build -trimpath -ldflags $(ldflags) -o /$(net_name)/server.$(distro) $(opt_workspace)/katzenpost/server/cmd/server
 
 $(net_name)/voting.$(distro): $(distro)_go_mod.stamp $(docker_compose_yml)
 		$(docker) run ${docker_args} $(mount_net_name) --rm katzenpost-$(distro)_go_mod \
@@ -178,6 +172,10 @@ $(net_name)/ping.$(distro): $(distro)_go_mod.stamp
 		$(docker) run ${docker_args} $(mount_net_name) --rm katzenpost-$(distro)_go_mod \
 			$(sh) -c 'cd ping && go mod verify && go build -ldflags ${ldflags} && \
 			mv ping /$(net_name)/ping.$(distro)'
+
+$(net_name)/http_proxy.$(distro): $(distro)_go_mod.stamp $(docker_compose_yml)
+	$(docker) run $(docker_args) katzenpost-$(distro)_go_mod \
+	go build -trimpath -ldflags $(ldflags) -o /$(net_name)/http_proxy.$(distro) $(opt_workspace)/server_plugins/cbor_plugins/http_proxy/cmd/http_proxy
 
 clean-images: stop
 	@-for distro in $(DISTROS); do \
