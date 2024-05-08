@@ -39,14 +39,15 @@ jobs:
         run: |
           sleep 240
 
-      - name: Verify Running Docker Containers
+      - name: run ping
+        run: cd docker && sudo -E make run-ping
+
+      - name: run client end to end tests
+        run: cd client && sudo -E make testargs=-coverprofile=coverage.part dockerdockertest && cat coverage.part >> ../coverage.out
+
+      - name: Stop the mixnet
         run: |
-          sleep 30  # Allow some time for all services to start up
-          containers=$(sudo docker ps --format '{{.Names}}: {{.Status}}')
-          echo "Running containers:"
-          echo "$containers"
-          if [[ $(echo "$containers" | wc -l) -lt 5 ]]; then  # Replace '5' with the expected number of running containers
-            echo "Error: Not all Docker containers are running."
-            exit 1
-          else
-            echo "All Docker containers are up and running."
+          cd docker && sudo -E make stop
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v3
