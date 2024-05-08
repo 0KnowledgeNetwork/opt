@@ -10,6 +10,8 @@ help:
 	@echo " status             - show testnet consensus status"
 	@echo " show-latest-vote   - does what it says"
 	@echo " run-ping           - send a ping over the testnet"
+	@echo " run-walletshield   - run walletshield app with testnet"
+	@echo " stop-walletshield  - stop running walletshield"
 	@echo " clean-bin          - stop, and delete compiled binaries"
 	@echo " clean-local        - stop, and delete data and binaries"
 	@echo " clean-local-dryrun - show what clean-local would delete"
@@ -34,7 +36,7 @@ lDMax=3000
 lM=0.0005
 lMMax=100
 
-UserForwardPayloadLength=2000
+UserForwardPayloadLength=30000
 
 # hybrid ctidh PQ can work here, but requires manually building ctidh.
 nike=x25519
@@ -66,10 +68,10 @@ docker_user?=$(shell if echo ${docker}|grep -q podman; then echo 0:0; else echo 
 
 opt_workspace=/go/opt
 katzenpost_workspace=/go/katzenpost
-katzenpost_dir=$(HOME)/katzenpost
+katzenpost_dir=./katzenpost
 
 opt_docker_args=--user ${docker_user} --volume $(shell readlink -f ..):$(opt_workspace) --workdir $(opt_workspace)
-katzenpost_docker_args=--user ${docker_user} --volume $(katzenpost_dir):$(katzenpost_workspace) --workdir $(katzenpost_workspace)
+katzenpost_docker_args=--user ${docker_user} --volume $(shell readlink -f $(katzenpost_dir)):$(katzenpost_workspace) --workdir $(katzenpost_workspace)
 
 replace_name=$(shell if echo ${docker}|grep -q podman; then echo " --replace --name"; else echo " --name"; fi)
 i_if_podman=$(shell if echo ${docker}|grep -q podman; then echo " -i"; else echo; fi)
@@ -210,7 +212,7 @@ clean-local-dryrun:
 clean: clean-images clean-local
 	-$(docker) ps -a|grep katzenpost|cat
 	-$(docker) images|grep katzenpost|cat
-	rm -r $(katzenpost_dir)
+	rm -rf $(katzenpost_dir)
 
 $(net_name)/walletshield.$(distro): $(distro)_go_mod.stamp $(net_name)/http_proxy.$(distro)
 		$(docker) run $(opt_docker_args) $(mount_net_name) katzenpost-alpine_base \
@@ -219,7 +221,7 @@ $(net_name)/walletshield.$(distro): $(distro)_go_mod.stamp $(net_name)/http_prox
 
 run-walletshield: $(net_name)/walletshield.$(distro) $(net_name)/running.stamp
 		$(docker) run -d --network=host $(opt_docker_args) $(mount_net_name) --name walletshield  --rm katzenpost-$(distro)_go_mod \
-        /$(net_name)/walletshield.$(distro) -config /$(net_name)/client/client.toml -listen :8080 -log_level DEBUG
+        /$(net_name)/walletshield.$(distro) -config /$(net_name)/client/client.toml -listen :7070 -log_level DEBUG
 
 stop-walletshield:
 		$(docker) stop walletshield

@@ -2,7 +2,7 @@ name: build
 on:
   push:
     branches:
-      - '**'
+      - main
   pull_request:
     branches:
       - '**'
@@ -43,7 +43,7 @@ jobs:
       - name: Test Walletshield
         continue-on-error: true
         run: |
-          curl -x http://localhost:8080 -s -o - -w "HTTP Status: %{http_code}\n" http://example.com
+          curl -x http://localhost:7070 -s -o - -w "HTTP Status: %{http_code}\n" http://example.com
 
       - name: Stop the Walletshield
         run: |
