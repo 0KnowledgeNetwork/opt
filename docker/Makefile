@@ -219,7 +219,7 @@ $(net_name)/walletshield.$(distro): $(distro)_go_mod.stamp $(net_name)/http_prox
 
 run-walletshield: $(net_name)/walletshield.$(distro) $(net_name)/running.stamp
 		$(docker) run -d --network=host $(opt_docker_args) $(mount_net_name) --name walletshield  --rm katzenpost-$(distro)_go_mod \
-        /$(net_name)/walletshield.$(distro) -config /$(net_name)/client/client.toml -listen :8080 -log_level DEBUG
+        /$(net_name)/walletshield.$(distro) -config /$(net_name)/client/client.toml -listen :7070 -log_level DEBUG
 
 stop-walletshield:
 		$(docker) stop walletshield
