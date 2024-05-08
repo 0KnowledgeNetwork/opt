@@ -87,12 +87,6 @@ type Server struct {
 func (s *Server) Handler(w http.ResponseWriter, req *http.Request) {
 	s.log.Info("received http request")
 
-	// we care about some headers, but not most
-	req.Header = http.Header{
-		"Content-Type":   []string{req.Header.Get("Content-Type")},
-		"Content-Length": []string{req.Header.Get("Content-Length")},
-	}
-
 	myurl, err := url.Parse(req.RequestURI)
 	if err != nil {
 		s.log.Errorf("url.Parse(req.RequestURI) failed: %s", err)
@@ -135,7 +129,7 @@ func (s *Server) Handler(w http.ResponseWriter, req *http.Request) {
 	s.log.Infof("REPLY: '%s'", rawReply)
 
 	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Content-Length", fmt.Sprintf("%d", len(rawReply)))
+	w.Header().Set("Content-Length", fmt.Sprintf("%d", len(response.Payload)))
 	w.WriteHeader(http.StatusOK)
 	fmt.Fprintf(w, string(response.Payload))
 }
