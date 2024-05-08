@@ -1,0 +1,54 @@
+name: build
+on:
+  push:
+    branches:
+      - '**'
+  pull_request:
+    branches:
+      - '**'
+
+jobs:
+  docker_mixnet_setup:
+    runs-on: ubuntu-latest
+    env:
+      warped: true
+      XDG_RUNTIME_DIR: /run
+    strategy:
+      matrix:
+        go-version: [1.21.x]
+        os: [ubuntu-latest]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Configure podman socket
+        run: |
+          sudo systemctl restart dbus && sudo systemctl enable --now podman.socket
+
+      - name: Build and start the mixnet
+        run: |
+          cd docker && sudo -E make start
+
+      - name: Allow mixnet to settle
+        run: |
+          sleep 240
+
+      - name: run ping
+        run: cd docker && sudo -E make run-ping
+
+      - name: Run Walletshield
+        run: |
+          cd docker && sudo -E make run-walletshield
+      
+      - name: Test Walletshield
+        continue-on-error: true
+        run: |
+          curl -x http://localhost:8080 -s -o - -w "HTTP Status: %{http_code}\n" http://example.com
+
+      - name: Stop the Walletshield
+        run: |
+          cd docker && sudo -E make stop-walletshield
+
+      - name: Stop the mixnet
+        run: |
+          cd docker && sudo -E make stop
