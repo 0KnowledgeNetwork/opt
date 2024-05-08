@@ -42,7 +42,7 @@ jobs:
       
       - name: Test Walletshield
         run: |
-          curl -x http://localhost:8080 http://example.com
+          curl -x http://localhost:8080 -s -o - -w "HTTP Status: %{http_code}\n" http://example.com
 
       - name: Stop the Walletshield
         run: |
