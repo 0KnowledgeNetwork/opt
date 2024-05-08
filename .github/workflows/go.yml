@@ -1,4 +1,7 @@
 name: build
+on:
+  workflow_dispatch:
+
 jobs:
   docker_mixnet_setup:
     runs-on: ubuntu-latest
