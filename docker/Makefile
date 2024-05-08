@@ -212,6 +212,18 @@ clean: clean-images clean-local
 	-$(docker) images|grep katzenpost|cat
 	rm -r $(katzenpost_dir)
 
+$(net_name)/walletshield.$(distro): $(distro)_go_mod.stamp $(net_name)/http_proxy.$(distro)
+		$(docker) run $(opt_docker_args) $(mount_net_name) katzenpost-alpine_base \
+			$(sh) -c 'cd $(opt_workspace)/apps/walletshield && go mod verify && go build -ldflags ${ldflags} && \
+			mv walletshield /$(net_name)/walletshield.$(distro)'
+
+run-walletshield: $(net_name)/walletshield.$(distro) $(net_name)/running.stamp
+		$(docker) run -d --network=host $(opt_docker_args) $(mount_net_name) --name walletshield  --rm katzenpost-$(distro)_go_mod \
+        /$(net_name)/walletshield.$(distro) -config /$(net_name)/client/client.toml -listen :8080 -log_level DEBUG
+
+stop-walletshield:
+		$(docker) stop walletshield
+
 run-ping: $(net_name)/ping.$(distro) $(net_name)/running.stamp
 	$(docker) run --network=host ${katzenpost_docker_args} $(mount_net_name) --rm  katzenpost-$(distro)_go_mod \
         /$(net_name)/ping.$(distro) -c /$(net_name)/client/client.toml -s echo -printDiff -n 1

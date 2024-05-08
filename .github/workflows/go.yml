@@ -36,7 +36,18 @@ jobs:
       - name: run ping
         run: cd docker && sudo -E make run-ping
 
+      - name: Run Walletshield
+        run: |
+          cd docker && sudo -E make run-walletshield
+      
+      - name: Test Walletshield
+        run: |
+          curl -x http://localhost:8080 http://example.com
+
+      - name: Stop the Walletshield
+        run: |
+          cd docker && sudo -E make stop-walletshield
+
       - name: Stop the mixnet
         run: |
           cd docker && sudo -E make stop
-

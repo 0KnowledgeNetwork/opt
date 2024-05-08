@@ -116,7 +116,9 @@ func (s *Server) Handler(w http.ResponseWriter, req *http.Request) {
 
 	rawReply, err := s.session.BlockingSendReliableMessage(s.target.Name, s.target.Provider, blob)
 	if err != nil {
-		fmt.Fprint(w, "custom 404")
+		s.log.Errorf("Failed to send reliable message: %s", err)
+		http.Error(w, "custom 404", http.StatusNotFound)
+		return
 	}
 
 	// use the streaming decoder and simply return the first cbor object
@@ -125,7 +127,9 @@ func (s *Server) Handler(w http.ResponseWriter, req *http.Request) {
 	dec := cbor.NewDecoder(bytes.NewReader(rawReply))
 	err = dec.Decode(response)
 	if err != nil {
-		panic(err)
+		s.log.Errorf("Failed to decode response: %s", err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
 	}
 
 	s.log.Infof("REPLY: '%s'", rawReply)
