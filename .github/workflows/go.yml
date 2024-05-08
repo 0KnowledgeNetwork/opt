@@ -29,12 +29,6 @@ jobs:
         run: |
           cd docker && sudo -E make start
 
-      - name: List All Containers
-        run: |
-          echo "Listing all Docker containers:"
-          sleep 2
-          sudo docker ps -a
-
       - name: Allow mixnet to settle
         run: |
           sleep 240
