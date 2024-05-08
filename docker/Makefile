@@ -103,7 +103,7 @@ run: $(docker_compose_yml) $(net_name)/server.$(distro) $(net_name)/voting.$(dis
 	&& DOCKER_USER=${docker_user} $(docker_compose) up --remove-orphans
 	cd $(net_name) && rm -v running.stamp
 
-start: clone-katzenpost $(docker_compose_yml) $(net_name)/server.$(distro) $(net_name)/voting.$(distro)
+start: clone-katzenpost $(docker_compose_yml) $(net_name)/http_proxy.$(distro) $(net_name)/server.$(distro) $(net_name)/voting.$(distro) 
 	cd $(net_name); DOCKER_USER=${docker_user} $(docker_compose) up --remove-orphans -d; $(docker_compose) top
 	touch $(net_name)/running.stamp
 
@@ -176,6 +176,11 @@ $(net_name)/ping.$(distro): $(distro)_go_mod.stamp
 		$(docker) run ${katzenpost_docker_args} $(mount_net_name) --rm katzenpost-$(distro)_go_mod \
 			$(sh) -c 'cd ping && go mod verify && go build -ldflags ${ldflags} && \
 			mv ping /$(net_name)/ping.$(distro)'
+
+$(net_name)/http_proxy.$(distro): alpine_base.stamp
+		$(docker) run $(opt_docker_args) $(mount_net_name) katzenpost-alpine_base \
+			$(sh) -c 'cd $(opt_workspace)/server_plugins/cbor_plugins/http_proxy/cmd/http_proxy && go mod verify && go build -ldflags ${ldflags} && \
+			mv http_proxy /$(net_name)/http_proxy.$(distro)'
 
 clean-images: stop
 	@-for distro in $(DISTROS); do \
