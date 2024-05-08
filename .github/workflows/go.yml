@@ -10,24 +10,34 @@ on:
 jobs:
   docker_mixnet_setup:
     runs-on: ubuntu-latest
+    env:
+      warped: true
+      XDG_RUNTIME_DIR: /run
+    strategy:
+      matrix:
+        go-version: [1.21.x]
+        os: [ubuntu-latest]
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
 
-      - name: Set up Docker Environment
+      - name: Configure podman socket
         run: |
-          sudo apt-get update
-          sudo apt-get install -y docker-compose
+          sudo systemctl restart dbus && sudo systemctl enable --now podman.socket
 
-      - name: Build and Start Docker Mixnet
+      - name: Build and start the mixnet
         run: |
-          cd docker
-          sudo make start
+          cd docker && sudo -E make start
 
       - name: List All Containers
         run: |
           echo "Listing all Docker containers:"
+          sleep 2
           sudo docker ps -a
+
+      - name: Allow mixnet to settle
+        run: |
+          sleep 240
 
       - name: Verify Running Docker Containers
         run: |
