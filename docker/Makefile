@@ -174,8 +174,7 @@ $(net_name)/voting.$(distro): $(distro)_go_mod.stamp $(docker_compose_yml)
 
 $(net_name)/ping.$(distro): $(distro)_go_mod.stamp
 		$(docker) run ${katzenpost_docker_args} $(mount_net_name) --rm katzenpost-$(distro)_go_mod \
-			$(sh) -c 'cd ping && go mod verify && go build -ldflags ${ldflags} && \
-			mv ping /$(net_name)/ping.$(distro)'
+			go build -trimpath -ldflags $(ldflags) -o /$(net_name)/ping.$(distro) $(katzenpost_workspace)/ping
 
 $(net_name)/http_proxy.$(distro): alpine_base.stamp
 		$(docker) run $(opt_docker_args) $(mount_net_name) katzenpost-alpine_base \
