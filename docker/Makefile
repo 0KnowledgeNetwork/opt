@@ -66,10 +66,10 @@ docker_user?=$(shell if echo ${docker}|grep -q podman; then echo 0:0; else echo 
 
 opt_workspace=/go/opt
 katzenpost_workspace=/go/katzenpost
-katzenpost_dir=$(HOME)/katzenpost
+katzenpost_dir=./katzenpost
 
 opt_docker_args=--user ${docker_user} --volume $(shell readlink -f ..):$(opt_workspace) --workdir $(opt_workspace)
-katzenpost_docker_args=--user ${docker_user} --volume $(katzenpost_dir):$(katzenpost_workspace) --workdir $(katzenpost_workspace)
+katzenpost_docker_args=--user ${docker_user} --volume $(shell readlink -f $(katzenpost_dir)):$(katzenpost_workspace) --workdir $(katzenpost_workspace)
 
 replace_name=$(shell if echo ${docker}|grep -q podman; then echo " --replace --name"; else echo " --name"; fi)
 i_if_podman=$(shell if echo ${docker}|grep -q podman; then echo " -i"; else echo; fi)
