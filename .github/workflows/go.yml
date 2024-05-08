@@ -1,0 +1,34 @@
+name: build
+jobs:
+  docker_mixnet_setup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Docker Environment
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y docker-compose
+
+      - name: Build and Start Docker Mixnet
+        run: |
+          cd docker
+          sudo make start
+
+      - name: List All Containers
+        run: |
+          echo "Listing all Docker containers:"
+          sudo docker ps -a
+
+      - name: Verify Running Docker Containers
+        run: |
+          sleep 30  # Allow some time for all services to start up
+          containers=$(sudo docker ps --format '{{.Names}}: {{.Status}}')
+          echo "Running containers:"
+          echo "$containers"
+          if [[ $(echo "$containers" | wc -l) -lt 5 ]]; then  # Replace '5' with the expected number of running containers
+            echo "Error: Not all Docker containers are running."
+            exit 1
+          else
+            echo "All Docker containers are up and running."
