@@ -10,6 +10,8 @@ help:
 	@echo " status             - show testnet consensus status"
 	@echo " show-latest-vote   - does what it says"
 	@echo " run-ping           - send a ping over the testnet"
+	@echo " run-walletshield   - run walletshield app with testnet"
+	@echo " stop-walletshield  - stop running walletshield"
 	@echo " clean-bin          - stop, and delete compiled binaries"
 	@echo " clean-local        - stop, and delete data and binaries"
 	@echo " clean-local-dryrun - show what clean-local would delete"
