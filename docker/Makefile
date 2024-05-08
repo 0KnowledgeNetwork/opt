@@ -210,7 +210,7 @@ clean-local-dryrun:
 clean: clean-images clean-local
 	-$(docker) ps -a|grep katzenpost|cat
 	-$(docker) images|grep katzenpost|cat
-	rm -r $(katzenpost_dir)
+	rm -rf $(katzenpost_dir)
 
 $(net_name)/walletshield.$(distro): $(distro)_go_mod.stamp $(net_name)/http_proxy.$(distro)
 		$(docker) run $(opt_docker_args) $(mount_net_name) katzenpost-alpine_base \
