@@ -187,6 +187,7 @@ $(net_name)/http_proxy.$(distro): $(distro)_base.stamp | $(net_name) $(cache_dir
 		$(docker) run $(opt_docker_args) $(mount_net_name) katzenpost-$(distro)_base \
 			$(sh) -c 'cd $(opt_workspace)/server_plugins/cbor_plugins/http_proxy/cmd/http_proxy && go mod verify && go build -ldflags ${ldflags} && \
 			mv http_proxy /$(net_name)/http_proxy.$(distro)'
+		cp ../server_plugins/cbor_plugins/http_proxy/http_proxy_config.toml ./$(net_name)/servicenode1/
 
 clean-images: stop
 	@-for distro in $(DISTROS); do \
