@@ -19,7 +19,7 @@ jobs:
         os: [ubuntu-latest]
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Configure podman socket
         run: |
@@ -27,11 +27,7 @@ jobs:
 
       - name: Build and start the mixnet
         run: |
-          cd docker && sudo -E make start
-
-      - name: Allow mixnet to settle
-        run: |
-          sleep 240
+          cd docker && sudo -E make start wait
 
       - name: run ping
         run: cd docker && sudo -E make run-ping
