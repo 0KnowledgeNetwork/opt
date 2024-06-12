@@ -119,7 +119,7 @@ func (s *katzenpost) genClientCfg() error {
 	cfg.VotingAuthority = &cConfig.VotingAuthority{Peers: peers}
 
 	// Debug section
-	cfg.Debug = &cConfig.Debug{DisableDecoyTraffic: false}
+	cfg.Debug = &cConfig.Debug{DisableDecoyTraffic: true}
 	err := saveCfg(cfg, s.outDir)
 	if err != nil {
 		return err
@@ -145,8 +145,8 @@ func (s *katzenpost) genNodeConfig(isGateway, isServiceNode bool, isVoting bool)
 	} else if isServiceNode {
 		n = fmt.Sprintf("servicenode%d", s.serviceNodeIdx+1)
 	}
-	cfg := new(sConfig.Config)
 
+	cfg := new(sConfig.Config)
 	cfg.SphinxGeometry = s.sphinxGeometry
 
 	// Server section.
@@ -172,7 +172,7 @@ func (s *katzenpost) genNodeConfig(isGateway, isServiceNode bool, isVoting bool)
 
 	// Debug section.
 	cfg.Debug = new(sConfig.Debug)
-	cfg.Debug.SendDecoyTraffic = true
+	cfg.Debug.SendDecoyTraffic = false
 
 	// PKI section.
 	if isVoting {
@@ -202,32 +202,18 @@ func (s *katzenpost) genNodeConfig(isGateway, isServiceNode bool, isVoting bool)
 
 		// configure an entry provider or a spool storage provider
 		cfg.ServiceNode = &sConfig.ServiceNode{}
-		spoolCfg := &sConfig.CBORPluginKaetzchen{
-			Capability:     "spool",
-			Endpoint:       "+spool",
-			Command:        s.baseDir + "/memspool" + s.binSuffix,
+
+		httpProxyCfg := &sConfig.CBORPluginKaetzchen{
+			Capability:     "http_proxy",
+			Endpoint:       "http_proxy",
+			Command:        s.baseDir + "/http_proxy" + s.binSuffix,
 			MaxConcurrency: 1,
 			Config: map[string]interface{}{
-				"data_store": s.baseDir + "/" + cfg.Server.Identifier + "/memspool.storage",
-				"log_dir":    s.baseDir + "/" + cfg.Server.Identifier,
+				"log_dir": s.baseDir + "/" + cfg.Server.Identifier,
+				"config":  s.baseDir + "/" + cfg.Server.Identifier + "/" + "http_proxy_config.toml",
 			},
 		}
-		cfg.ServiceNode.CBORPluginKaetzchen = []*sConfig.CBORPluginKaetzchen{spoolCfg}
-		if !s.hasPanda {
-			pandaCfg := &sConfig.CBORPluginKaetzchen{
-				Capability:     "panda",
-				Endpoint:       "+panda",
-				Command:        s.baseDir + "/panda_server" + s.binSuffix,
-				MaxConcurrency: 1,
-				Config: map[string]interface{}{
-					"fileStore": s.baseDir + "/" + cfg.Server.Identifier + "/panda.storage",
-					"log_dir":   s.baseDir + "/" + cfg.Server.Identifier,
-					"log_level": s.logLevel,
-				},
-			}
-			cfg.ServiceNode.CBORPluginKaetzchen = append(cfg.ServiceNode.CBORPluginKaetzchen, pandaCfg)
-			s.hasPanda = true
-		}
+		cfg.ServiceNode.CBORPluginKaetzchen = []*sConfig.CBORPluginKaetzchen{httpProxyCfg}
 
 		echoCfg := new(sConfig.Kaetzchen)
 		echoCfg.Capability = "echo"
