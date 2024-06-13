@@ -7,13 +7,13 @@ require (
 	github.com/carlmjohnson/versioninfo v0.22.5
 	github.com/charmbracelet/log v0.4.0
 	github.com/fxamacker/cbor/v2 v2.6.0
-	github.com/katzenpost/hpqc v0.0.31
-	github.com/katzenpost/katzenpost v0.0.34
+	github.com/katzenpost/hpqc v0.0.35
+	github.com/katzenpost/katzenpost v0.0.35
 	gopkg.in/op/go-logging.v1 v1.0.0-20160211212156-b2cb9fa56473
 )
 
 require (
-	codeberg.org/vula/highctidh v1.0.2024050500 // indirect
+	codeberg.org/vula/highctidh v1.0.2024052900 // indirect
 	filippo.io/edwards25519 v1.0.0 // indirect
 	filippo.io/mlkem768 v0.0.0-20240221181710-5ce91625fdc1 // indirect
 	github.com/aymanbagabas/go-osc52/v2 v2.0.1 // indirect
