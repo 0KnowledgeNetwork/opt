@@ -70,6 +70,7 @@ gid?=$(shell [ "$$SUDO_GID" != "" ] && echo "$$SUDO_GID" || id -g)
 opt_workspace=/go/opt
 katzenpost_workspace=/go/katzenpost
 katzenpost_dir=./katzenpost
+katzenpost_version=$(shell grep -E '^	github.com/katzenpost/katzenpost ' ../go.mod | awk '{print $$2}')
 
 docker_user?=$(shell if echo ${docker}|grep -q podman; then echo 0:0; else echo ${uid}:${gid}; fi)
 docker_args=--user ${docker_user} --volume $(shell readlink -f $(katzenpost_dir)):$(katzenpost_workspace) --workdir $(katzenpost_workspace) -v $(shell readlink -f .)/$(cache_dir)/go:/go/ -v $(shell readlink -f .)/$(cache_dir)/root_cache:/root/.cache
@@ -98,7 +99,12 @@ $(cache_dir)/root_cache:
 
 clone-katzenpost:
 	if [ ! -d "$(katzenpost_dir)" ]; then \
-		git clone https://github.com/katzenpost/katzenpost.git $(katzenpost_dir); \
+		git clone \
+			--branch $(katzenpost_version) \
+			--depth 1 \
+			--single-branch \
+			https://github.com/katzenpost/katzenpost.git \
+			$(katzenpost_dir); \
 	fi
 
 $(docker_compose_yml): ../genconfig/main.go $(distro)_base.stamp | $(net_name) $(cache_dir)
