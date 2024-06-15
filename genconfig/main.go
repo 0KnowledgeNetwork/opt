@@ -162,9 +162,15 @@ func (s *katzenpost) genNodeConfig(isGateway, isServiceNode bool, isVoting bool)
 	cfg.Server.IsGatewayNode = isGateway
 	cfg.Server.IsServiceNode = isServiceNode
 	if isGateway {
+		cfg.Management = new(sConfig.Management)
+		cfg.Management.Enable = true
 		cfg.Server.AltAddresses = map[string][]string{
 			"TCP": []string{fmt.Sprintf("localhost:%d", s.lastPort)},
 		}
+	}
+	if isServiceNode {
+		cfg.Management = new(sConfig.Management)
+		cfg.Management.Enable = true
 	}
 	// Enable Metrics endpoint
 	s.lastPort += 1
