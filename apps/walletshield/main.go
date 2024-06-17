@@ -108,7 +108,7 @@ func (s *Server) Handler(w http.ResponseWriter, req *http.Request) {
 		panic(err)
 	}
 
-	rawReply, err := s.session.BlockingSendReliableMessage(s.target.Name, s.target.Provider, blob)
+	rawReply, err := s.session.BlockingSendUnreliableMessage(s.target.Name, s.target.Provider, blob)
 	if err != nil {
 		s.log.Errorf("Failed to send reliable message: %s", err)
 		http.Error(w, "custom 404", http.StatusNotFound)
