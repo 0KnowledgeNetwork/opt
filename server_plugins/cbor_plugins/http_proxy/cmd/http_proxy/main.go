@@ -146,6 +146,13 @@ func (s *proxyRequestHandler) OnCommand(cmd cborplugin.Command) error {
 			return fmt.Errorf("validateRequestURL failed: %s", err)
 		}
 
+		if request.URL.Path == "/_/probe" {
+			go func() {
+				s.write(&cborplugin.Response{ID: r.ID, SURB: r.SURB, Payload: nil})
+			}()
+			return nil
+		}
+
 		uri := request.URL.Path
 		uri = uri[1:]
 		target, ok := s.cfg.Networks[uri]
