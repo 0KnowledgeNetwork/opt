@@ -21,7 +21,10 @@ import (
 	"github.com/0KnowledgeNetwork/opt/server_plugins/cbor_plugins/http_proxy"
 )
 
-const MaxPayloadSize = 15000 - 20
+// Note: UserForwardPayloadLength should match the same value passed to genconfig.
+// MaxPayloadSize is set here as an approximation while a better solution is developed to inform the plugin of the Sphinx Geometry.
+const UserForwardPayloadLength = 30000
+const MaxPayloadSize = UserForwardPayloadLength - 20
 
 func main() {
 	var logLevel string
