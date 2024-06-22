@@ -1,16 +1,16 @@
 package main
 
 import (
-	"crypto/ecdh"
 	"crypto/hmac"
-	"crypto/rand"
 	"net"
 	"time"
 
 	"github.com/katzenpost/hpqc/hash"
 	"github.com/katzenpost/hpqc/kem/schemes"
+	ecdh "github.com/katzenpost/hpqc/nike/x25519"
+	"github.com/katzenpost/hpqc/rand"
 
-	"github.com/katzenpost/katzenpost/core/cert"
+	signSchemes "github.com/katzenpost/hpqc/sign/schemes"
 	"github.com/katzenpost/katzenpost/core/epochtime"
 	"github.com/katzenpost/katzenpost/core/pki"
 	"github.com/katzenpost/katzenpost/core/wire"
@@ -28,7 +28,7 @@ func (s *Server) onConn(conn net.Conn) {
 
 	defer func() {
 		conn.Close()
-		s.wg.Done()
+		s.Done()
 	}()
 
 	// Initialize the wire protocol session.
@@ -41,12 +41,13 @@ func (s *Server) onConn(conn net.Conn) {
 	}
 
 	cfg := &wire.SessionConfig{
-		KEMScheme:         kemscheme,
-		Geometry:          nil,
-		Authenticator:     auth,
-		AdditionalData:    keyHash[:],
-		AuthenticationKey: s.linkKey,
-		RandomReader:      rand.Reader,
+		KEMScheme:          kemscheme,
+		PKISignatureScheme: signSchemes.ByName(s.cfg.Server.PKISignatureScheme),
+		Geometry:           s.geo,
+		Authenticator:      auth,
+		AdditionalData:     keyHash[:],
+		AuthenticationKey:  s.linkKey,
+		RandomReader:       rand.Reader,
 	}
 	wireConn, err := wire.NewPKISession(cfg, false)
 	if err != nil {
@@ -163,8 +164,9 @@ func (s *Server) onPostDescriptor(rAddr net.Addr, cmd *commands.PostDescriptor, 
 		resp.ErrorCode = commands.DescriptorForbidden
 		return resp
 	}
+	pkiSignatureScheme := signSchemes.ByName(s.cfg.Server.PKISignatureScheme)
 
-	descIdPubKey, err := cert.Scheme.UnmarshalBinaryPublicKey(desc.IdentityKey)
+	descIdPubKey, err := pkiSignatureScheme.UnmarshalBinaryPublicKey(desc.IdentityKey)
 	if err != nil {
 		s.log.Error("failed to unmarshal descriptor IdentityKey")
 		resp.ErrorCode = commands.DescriptorForbidden
@@ -218,14 +220,16 @@ func (a *wireAuthenticator) IsPeerValid(creds *wire.PeerCredentials) bool {
 	copy(pk[:], creds.AdditionalData[:hash.HashSize])
 
 	// FIXME: query the app chain to determine if
-	// the identity is a mix or a provider.
-	isProvider := false
+	// the identity is a mix or a gateway or service node.
 	isMix := true
+	isGatewayNode := false
+	isServiceNode := false
 	//_, isMix := a.s.state.authorizedMixes[pk]
-	//_, isProvider := a.s.state.authorizedProviders[pk]
+	//_, isGatewayNode := a.s.state.authorizedGatewayNodes[pk]
+	//_, isServiceNode := a.s.state.authorizedServiceNodes[pk]
 
-	if isMix || isProvider {
-		a.isMix = true // Providers and mixes are both mixes. :)
+	if isMix || isGatewayNode || isServiceNode {
+		a.isMix = true // Gateways and service nodes and mixes are all mixes.
 		return true
 	} else {
 		a.s.log.Warning("Rejecting authority authentication, public key mismatch.")

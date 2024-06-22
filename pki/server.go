@@ -17,8 +17,8 @@ import (
 	"github.com/katzenpost/hpqc/kem/schemes"
 	"github.com/katzenpost/hpqc/sign"
 	signpem "github.com/katzenpost/hpqc/sign/pem"
+	signSchemes "github.com/katzenpost/hpqc/sign/schemes"
 
-	"github.com/katzenpost/katzenpost/core/cert"
 	"github.com/katzenpost/katzenpost/core/log"
 	"github.com/katzenpost/katzenpost/core/sphinx/geo"
 	"github.com/katzenpost/katzenpost/core/utils"
@@ -30,7 +30,10 @@ import (
 // terminates due to the `GenerateOnly` debug config option.
 var ErrGenerateOnly = errors.New("server: GenerateOnly set")
 
+// Server is a voting authority server instance.
 type Server struct {
+	sync.WaitGroup
+
 	cfg *config.Config
 	geo *geo.Geometry
 
@@ -43,7 +46,6 @@ type Server struct {
 
 	listeners []net.Listener
 
-	wg         *sync.WaitGroup
 	fatalErrCh chan error
 	haltedCh   chan interface{}
 	haltOnce   sync.Once
@@ -107,7 +109,7 @@ func (s *Server) listenWorker(l net.Listener) {
 	defer func() {
 		s.log.Noticef("Stopping listening on: %v", addr)
 		l.Close()
-		s.wg.Done()
+		s.Done()
 	}()
 	for {
 		conn, err := l.Accept()
@@ -119,7 +121,7 @@ func (s *Server) listenWorker(l net.Listener) {
 			continue
 		}
 
-		s.wg.Add(1)
+		s.Add(1)
 
 		// FIXME(david): handle connections, remove stupid print statement.
 		//s.onConn(conn)
@@ -141,19 +143,22 @@ func (s *Server) halt() {
 	}
 
 	// Wait for all the connections to terminate.
-	s.wg.Wait()
+	s.WaitGroup.Wait()
 	close(s.fatalErrCh)
+
 	s.log.Notice("Shutdown complete.")
 	close(s.haltedCh)
 }
 
+// New returns a new Server instance parameterized with the specific
+// configuration.
 func New(cfg *config.Config) (*Server, error) {
 	s := new(Server)
 	s.cfg = cfg
 	s.geo = cfg.SphinxGeometry
+
 	s.fatalErrCh = make(chan error)
 	s.haltedCh = make(chan interface{})
-	s.wg = new(sync.WaitGroup)
 
 	// Do the early initialization and bring up logging.
 	if err := s.initDataDir(); err != nil {
@@ -168,6 +173,8 @@ func New(cfg *config.Config) (*Server, error) {
 		s.log.Warning("Unsafe Debug logging is enabled.")
 	}
 
+	pkiSignatureScheme := signSchemes.ByName(cfg.Server.PKISignatureScheme)
+
 	// Initialize the authority identity key.
 	identityPrivateKeyFile := filepath.Join(s.cfg.Server.DataDir, "identity.private.pem")
 	identityPublicKeyFile := filepath.Join(s.cfg.Server.DataDir, "identity.public.pem")
@@ -175,16 +182,16 @@ func New(cfg *config.Config) (*Server, error) {
 	var err error
 
 	if utils.BothExists(identityPrivateKeyFile, identityPublicKeyFile) {
-		s.identityPrivateKey, err = signpem.FromPrivatePEMFile(identityPrivateKeyFile, cert.Scheme)
+		s.identityPrivateKey, err = signpem.FromPrivatePEMFile(identityPrivateKeyFile, pkiSignatureScheme)
 		if err != nil {
 			return nil, err
 		}
-		s.identityPublicKey, err = signpem.FromPublicPEMFile(identityPublicKeyFile, cert.Scheme)
+		s.identityPublicKey, err = signpem.FromPublicPEMFile(identityPublicKeyFile, pkiSignatureScheme)
 		if err != nil {
 			return nil, err
 		}
 	} else if utils.BothNotExists(identityPrivateKeyFile, identityPublicKeyFile) {
-		s.identityPublicKey, s.identityPrivateKey, err = cert.Scheme.GenerateKey()
+		s.identityPublicKey, s.identityPrivateKey, err = pkiSignatureScheme.GenerateKey()
 		if err != nil {
 			return nil, err
 		}
@@ -275,7 +282,7 @@ func New(cfg *config.Config) (*Server, error) {
 			continue
 		}
 		s.listeners = append(s.listeners, l)
-		s.wg.Add(1)
+		s.Add(1)
 		go s.listenWorker(l)
 	}
 	if len(s.listeners) == 0 {
