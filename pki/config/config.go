@@ -10,10 +10,10 @@ import (
 
 	"github.com/BurntSushi/toml"
 
+	"github.com/katzenpost/hpqc/kem/schemes"
 	"github.com/katzenpost/hpqc/rand"
 	signpem "github.com/katzenpost/hpqc/sign/pem"
-
-	"github.com/katzenpost/katzenpost/core/cert"
+	signSchemes "github.com/katzenpost/hpqc/sign/schemes"
 	"github.com/katzenpost/katzenpost/core/sphinx/geo"
 	"github.com/katzenpost/katzenpost/core/utils"
 )
@@ -97,28 +97,35 @@ type Parameters struct {
 	LambdaPMaxDelay uint64
 
 	// LambdaL is the inverse of the mean of the exponential distribution
-	// that is used to select the delay between clients sending from their egress
-	// FIFO queue or drop decoy message.
+	// that is used to select the delay between clients sending loop decoys.
 	LambdaL float64
 
 	// LambdaLMaxDelay sets the maximum delay for LambdaP.
 	LambdaLMaxDelay uint64
 
 	// LambdaD is the inverse of the mean of the exponential distribution
-	// that is used to select the delay between clients sending from their egress
-	// FIFO queue or drop decoy message.
+	// that is used to select the delay between clients sending deop decoys.
 	LambdaD float64
 
 	// LambdaDMaxDelay sets the maximum delay for LambdaP.
 	LambdaDMaxDelay uint64
 
 	// LambdaM is the inverse of the mean of the exponential distribution
-	// that is used to select the delay between clients sending from their egress
-	// FIFO queue or drop decoy message.
+	// that is used to select the delay between sending mix node decoys.
 	LambdaM float64
+
+	// LambdaG is the inverse of the mean of the exponential distribution
+	// that is used to select the delay between sending gateway node decoys.
+	//
+	// WARNING: This is not used via the TOML config file; this field is only
+	// used internally by the dirauth server state machine.
+	LambdaG float64
 
 	// LambdaMMaxDelay sets the maximum delay for LambdaP.
 	LambdaMMaxDelay uint64
+
+	// LambdaGMaxDelay sets the maximum delay for LambdaG.
+	LambdaGMaxDelay uint64
 }
 
 func (pCfg *Parameters) validate() error {
@@ -151,6 +158,12 @@ func (pCfg *Parameters) validate() error {
 	}
 	if pCfg.LambdaMMaxDelay > absoluteMaxDelay {
 		return fmt.Errorf("config: Parameters: LambdaMMaxDelay %v is out of range", pCfg.LambdaPMaxDelay)
+	}
+	if pCfg.LambdaGMaxDelay > absoluteMaxDelay {
+		return fmt.Errorf("config: Parameters: LambdaGMaxDelay %v is out of range", pCfg.LambdaPMaxDelay)
+	}
+	if pCfg.LambdaGMaxDelay == 0 {
+		return errors.New("LambdaGMaxDelay must be set")
 	}
 
 	return nil
@@ -233,6 +246,9 @@ type Server struct {
 	// WireKEMScheme is the wire protocol KEM scheme to use.
 	WireKEMScheme string
 
+	// PKISignatureScheme specifies the cryptographic signature scheme
+	PKISignatureScheme string
+
 	// Addresses are the IP address/port combinations that the server will bind
 	// to for incoming connections.
 	Addresses []string
@@ -243,6 +259,24 @@ type Server struct {
 
 // Validate parses and checks the Server configuration.
 func (sCfg *Server) validate() error {
+	if sCfg.WireKEMScheme == "" {
+		return errors.New("WireKEMScheme was not set")
+	} else {
+		s := schemes.ByName(sCfg.WireKEMScheme)
+		if s == nil {
+			return errors.New("KEM Scheme not found")
+		}
+	}
+
+	if sCfg.PKISignatureScheme == "" {
+		return errors.New("PKISignatureScheme was not set")
+	} else {
+		s := signSchemes.ByName(sCfg.PKISignatureScheme)
+		if s == nil {
+			return errors.New("PKI Signature Scheme not found")
+		}
+	}
+
 	if sCfg.Addresses != nil {
 		for _, v := range sCfg.Addresses {
 			if err := utils.EnsureAddrIPPort(v); err != nil {
@@ -317,13 +351,14 @@ func (cfg *Config) FixupAndValidate(forceGenOnly bool) error {
 	if err := cfg.Debug.validate(); err != nil {
 		return err
 	}
+	cfg.Parameters.applyDefaults()
+	cfg.Debug.applyDefaults()
+
+	pkiSignatureScheme := signSchemes.ByName(cfg.Server.PKISignatureScheme)
 
 	if forceGenOnly {
 		return nil
 	}
-
-	cfg.Parameters.applyDefaults()
-	cfg.Debug.applyDefaults()
 
 	ourPubKeyFile := filepath.Join(cfg.Server.DataDir, "identity.public.pem")
 	f, err := os.Open(ourPubKeyFile)
@@ -335,7 +370,7 @@ func (cfg *Config) FixupAndValidate(forceGenOnly bool) error {
 		return err
 	}
 
-	_, err = signpem.FromPublicPEMBytes(pemData, cert.Scheme)
+	_, err = signpem.FromPublicPEMBytes(pemData, pkiSignatureScheme)
 	if err != nil {
 		return err
 	}
