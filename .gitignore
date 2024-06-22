@@ -4,4 +4,5 @@ docker/cache
 docker/katzenpost
 docker/voting_mixnet
 genconfig/genconfig
+pki/pki
 server_plugins/cbor_plugins/http_proxy/cmd/http_proxy/http_proxy
