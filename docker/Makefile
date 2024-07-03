@@ -20,7 +20,7 @@ help:
 
 warped?=true
 mixes=3
-auths=3
+auths=1
 gateways=1
 serviceNodes=1
 
@@ -49,7 +49,7 @@ kem=
 DISTROS=alpine debian
 distro=alpine
 wirekem=xwing
-net_name=voting_mixnet
+net_name=appchain_mixnet
 base_port=30000
 bind_addr=127.0.0.1
 docker_compose_yml=$(net_name)/docker-compose.yml
@@ -121,12 +121,12 @@ $(docker_compose_yml): ../genconfig/main.go $(distro)_base.stamp | $(net_name) $
 $(net_name)/running.stamp:
 	make $(make_args) start
 
-run: $(docker_compose_yml) $(net_name)/server.$(distro) $(net_name)/voting.$(distro)
+run: clone-katzenpost $(docker_compose_yml) $(net_name)/http_proxy.$(distro) $(net_name)/pki.$(distro) $(net_name)/server.$(distro)
 	cd $(net_name) && touch running.stamp \
 	&& DOCKER_USER=${docker_user} $(docker_compose) up --remove-orphans
 	cd $(net_name) && rm -v running.stamp
 
-start: clone-katzenpost $(docker_compose_yml) $(net_name)/http_proxy.$(distro) $(net_name)/server.$(distro) $(net_name)/voting.$(distro) 
+start: clone-katzenpost $(docker_compose_yml) $(net_name)/http_proxy.$(distro) $(net_name)/pki.$(distro) $(net_name)/server.$(distro)
 	cd $(net_name); DOCKER_USER=${docker_user} $(docker_compose) up --remove-orphans -d; $(docker_compose) top
 	touch $(net_name)/running.stamp
 
@@ -189,11 +189,18 @@ $(net_name)/ping.$(distro): $(distro)_base.stamp | $(net_name) $(cache_dir)
 			$(sh) -c 'cd ping && go mod verify && go build -ldflags ${ldflags} && \
 			mv ping /$(net_name)/ping.$(distro)'
 
-$(net_name)/http_proxy.$(distro): $(distro)_base.stamp | $(net_name) $(cache_dir)
+$(net_name)/http_proxy.$(distro): $(distro)_base.stamp $(docker_compose_yml) | $(net_name) $(cache_dir)
 		$(docker) run $(opt_docker_args) $(mount_net_name) katzenpost-$(distro)_base \
 			$(sh) -c 'cd $(opt_workspace)/server_plugins/cbor_plugins/http_proxy/cmd/http_proxy && go mod verify && go build -ldflags ${ldflags} && \
 			mv http_proxy /$(net_name)/http_proxy.$(distro)'
 		cp ../server_plugins/cbor_plugins/http_proxy/http_proxy_config.toml ./$(net_name)/servicenode1/
+
+$(net_name)/pki.$(distro): $(distro)_base.stamp $(docker_compose_yml) | $(net_name) $(cache_dir)
+		$(docker) run $(opt_docker_args) $(mount_net_name) katzenpost-$(distro)_base \
+			$(sh) -c 'cd $(opt_workspace)/pki && go mod verify && go build -ldflags ${ldflags} && \
+			mv pki /$(net_name)/pki.$(distro)'
+		# replace the voting auth with our custom pki
+		sed -i.bak "s/voting\.$(distro)/pki\.$(distro)/" $(docker_compose_yml)
 
 clean-images: stop
 	@-for distro in $(DISTROS); do \

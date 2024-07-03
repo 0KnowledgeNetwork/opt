@@ -1,5 +1,6 @@
 apps/walletshield/walletshield
 docker/*.stamp
+docker/appchain_mixnet
 docker/cache
 docker/katzenpost
 docker/voting_mixnet
