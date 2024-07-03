@@ -1,3 +1,5 @@
+// related: katzenpost:authority/voting/server/wire_handler.go
+
 package main
 
 import (
@@ -119,17 +121,26 @@ func (s *Server) onMix(rAddr net.Addr, cmd commands.Command, peerIdentityKeyHash
 }
 
 func (s *Server) onGetConsensus(rAddr net.Addr, cmd *commands.GetConsensus) commands.Command {
+	s.log.Debugf("onGetConsensus: rAddr: %v, cmd: %+v", rAddr, cmd)
 	resp := &commands.Consensus{}
-	resp.ErrorCode = commands.ConsensusOk
-
-	// FIXME: retrieve document from app chain / smart contract,
-	// cmd.Epoch will be used to indentify which doc to retrieve.
-	// resp.Payload = doc
-
+	doc, err := s.state.documentForEpoch(cmd.Epoch)
+	if err != nil {
+		switch err {
+		case errGone:
+			resp.ErrorCode = commands.ConsensusGone
+		default:
+			resp.ErrorCode = commands.ConsensusNotFound
+		}
+	} else {
+		s.log.Debugf("Peer: %v: Serving document for epoch %v.", rAddr, cmd.Epoch)
+		resp.ErrorCode = commands.ConsensusOk
+		resp.Payload = doc
+	}
 	return resp
 }
 
 func (s *Server) onPostDescriptor(rAddr net.Addr, cmd *commands.PostDescriptor, pubKeyHash []byte) commands.Command {
+	s.log.Debugf("onPostDescriptor: from rAddr: %v, for epoch: %d", rAddr, cmd.Epoch)
 	resp := &commands.PostDescriptorStatus{
 		ErrorCode: commands.DescriptorInvalid,
 	}
@@ -179,15 +190,23 @@ func (s *Server) onPostDescriptor(rAddr net.Addr, cmd *commands.PostDescriptor, 
 		return resp
 	}
 
-	// FIXME: Ensure that the descriptor is from an allowed peer.
-	/*
-		if !s.state.isDescriptorAuthorized(desc) {
-			s.log.Errorf("Peer %v: Identity key hash '%x' not authorized", rAddr, hash.Sum256(desc.IdentityKey))
-			resp.ErrorCode = commands.DescriptorForbidden
-			return resp
-		}
-	*/
-	// FIXME: send the mix descriptor to the app chain / smart contract.
+	// Ensure that the descriptor is from an allowed peer.
+	if !s.state.isDescriptorAuthorized(desc) {
+		s.log.Errorf("Peer %v: Identity key hash '%x' not authorized", rAddr, hash.Sum256(desc.IdentityKey))
+		resp.ErrorCode = commands.DescriptorForbidden
+		return resp
+	}
+
+	// TODO: Use the packet loss statistics to make decisions about how to generate the consensus document.
+
+	// Hand the descriptor off to the state.  As long as this returns
+	// a nil, the authority "accepts" the descriptor.
+	err = s.state.onDescriptorUpload(cmd.Payload, desc, cmd.Epoch)
+	if err != nil {
+		s.log.Errorf("Peer %v: Rejected: %v", rAddr, err)
+		resp.ErrorCode = commands.DescriptorConflict
+		return resp
+	}
 
 	// Return a successful response.
 	s.log.Debugf("Peer %v: Accepted descriptor for epoch %v: '%v'", rAddr, cmd.Epoch, desc)
