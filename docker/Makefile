@@ -1,13 +1,13 @@
 warped?=true
 mixes=3
-auths=3
+auths=1
 gateways=1
 serviceNodes=1
 
 UserForwardPayloadLength=30000
 
 distro=alpine
-net_name=voting_mixnet
+net_name=appchain_mixnet
 docker_compose_yml=$(net_name)/docker-compose.yml
 sh=$(shell if echo ${distro}|grep -q alpine; then echo sh; else echo bash; fi)
 cache_dir=cache
@@ -52,7 +52,7 @@ help:
 	@$(MAKE) -e -C $(katzenpost_dir)/docker $@
 
 .PHONY: custom-binaries
-custom-binaries: $(net_dir)/http_proxy.$(distro)
+custom-binaries: $(net_dir)/http_proxy.$(distro) $(net_dir)/pki.$(distro)
 
 .PHONY: custom-config
 custom-config:
@@ -68,6 +68,11 @@ clone-katzenpost:
 			https://github.com/katzenpost/katzenpost.git \
 			$(katzenpost_dir); \
 	fi
+
+$(net_name)/pki.$(distro): $(katzenpost_dir)/docker/$(distro)_base.stamp $(docker_compose_yml) | $(net_name) $(cache_dir)
+	$(docker_run_sh) 'cd /go/opt/pki ; go build -trimpath -ldflags ${ldflags} && mv pki /$(net_name)/pki.$(distro)'
+	# replace the voting auth with our custom pki
+	sed -i.bak "s/voting\.$(distro)/pki\.$(distro)/" $(docker_compose_yml)
 
 $(net_dir)/http_proxy.$(distro): $(katzenpost_dir)/docker/$(distro)_base.stamp | $(net_name) $(cache_dir)
 	$(docker_run_sh) 'cd /go/opt/server_plugins/cbor_plugins/http_proxy/cmd/http_proxy ; go build -trimpath -ldflags ${ldflags} && mv http_proxy /$(net_name)/http_proxy.$(distro)'
