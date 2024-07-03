@@ -239,6 +239,17 @@ func (dCfg *Debug) applyDefaults() {
 	}
 }
 
+// Node is an authority mix node or provider entry.
+type Node struct {
+	// Identifier is the human readable node identifier, to be set iff
+	// the node is a Provider.
+	Identifier string
+
+	// IdentityPublicKeyPem is the node's public signing key also known
+	// as the identity key.
+	IdentityPublicKeyPem string
+}
+
 type Server struct {
 	// Identifier is the human readable identifier for the node (eg: FQDN).
 	Identifier string
@@ -305,8 +316,19 @@ type Config struct {
 	Logging    *Logging
 	Parameters *Parameters
 	Debug      *Debug
+	Topology   *Topology
 
 	SphinxGeometry *geo.Geometry
+}
+
+// Layer holds a slice of Nodes
+type Layer struct {
+	Nodes []Node
+}
+
+// Topology contains a slice of Layers, each containing a slice of Nodes
+type Topology struct {
+	Layers []Layer
 }
 
 // FixupAndValidate applies defaults to config entries and validates the
