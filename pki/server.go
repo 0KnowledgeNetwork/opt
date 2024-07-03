@@ -1,3 +1,5 @@
+// related: katzenpost:authority/voting/server/server.go
+
 package main
 
 import (
@@ -44,6 +46,7 @@ type Server struct {
 	logBackend *log.Backend
 	log        *logging.Logger
 
+	state     *state
 	listeners []net.Listener
 
 	fatalErrCh chan error
@@ -122,10 +125,7 @@ func (s *Server) listenWorker(l net.Listener) {
 		}
 
 		s.Add(1)
-
-		// FIXME(david): handle connections, remove stupid print statement.
-		//s.onConn(conn)
-		fmt.Println("conn %v", conn)
+		s.onConn(conn)
 	}
 
 	// NOTREACHED
@@ -273,6 +273,11 @@ func New(cfg *config.Config) (*Server, error) {
 		s.log.Warningf("Shutting down due to error: %v", err)
 		s.Shutdown()
 	}()
+
+	// Start up the state machine.
+	if s.state, err = newState(s); err != nil {
+		return nil, err
+	}
 
 	// Start up the listeners.
 	for _, v := range s.cfg.Server.Addresses {
