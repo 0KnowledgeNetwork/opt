@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"runtime"
 	"time"
 
 	"github.com/charmbracelet/log"
@@ -82,11 +83,21 @@ func main() {
 	}
 
 	if testProbe {
-		server.SendTestProbes(10*time.Second, testProbeCount)
-	} else {
-		http.HandleFunc("/", server.Handler)
-		http.ListenAndServe(listenAddr, nil)
-	}
+        server.SendTestProbes(10*time.Second, testProbeCount)
+    } else {
+        mux := http.NewServeMux()
+        mux.HandleFunc("/", server.Handler)
+        mux.HandleFunc("/debug/stacks", func(w http.ResponseWriter, r *http.Request) {
+            dumpGoroutineStacks(w)
+        })
+        http.ListenAndServe(listenAddr, mux)
+    }
+}
+
+func dumpGoroutineStacks(w http.ResponseWriter) {
+    buf := make([]byte, 1<<16)
+    n := runtime.Stack(buf, true)
+    w.Write(buf[:n])
 }
 
 type Server struct {
