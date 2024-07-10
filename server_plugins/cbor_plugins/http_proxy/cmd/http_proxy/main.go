@@ -194,6 +194,10 @@ func (s *proxyRequestHandler) OnCommand(cmd cborplugin.Command) error {
 		if len(body) > MaxPayloadSize {
 			s.log.Error("HTTP response body exceeds max Sphinx payload")
 			return s.sendError(r.ID, r.SURB, "HTTP response is too big")
+		} else {
+			response = &http_proxy.Response{
+				Payload: body,
+			}
 		}
 
 		payload, err := cbor.Marshal(response)
