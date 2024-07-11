@@ -117,7 +117,9 @@ func (s *proxyRequestHandler) OnCommand(cmd cborplugin.Command) error {
 	switch r := cmd.(type) {
 	case *cborplugin.Request:
 		if r.SURB == nil {
-			return errors.New("no SURB, cannot reply")
+			errMsg := "no SURB, cannot reply"
+			s.log.Error(errMsg)
+			return s.sendError(r.ID, r.SURB, errMsg)
 		}
 
 		// the padding bytes were not stripped because
@@ -130,7 +132,7 @@ func (s *proxyRequestHandler) OnCommand(cmd cborplugin.Command) error {
 		err := dec.Decode(req)
 		if err != nil {
 			s.log.Errorf("dec.Decode(req) failed: %s", err)
-			return err
+			return s.sendError(r.ID, r.SURB, "Error decoding request")
 		}
 
 		s.log.Debugf("Raw request payload: %s", req.Payload)
@@ -138,7 +140,7 @@ func (s *proxyRequestHandler) OnCommand(cmd cborplugin.Command) error {
 		request, err := http.ReadRequest(bufio.NewReader(bytes.NewReader(req.Payload)))
 		if err != nil {
 			s.log.Errorf("http.ReadRequest failed: %s", err)
-			return fmt.Errorf("http.ReadRequest failed: %s", err)
+			return s.sendError(r.ID, r.SURB, "Failed to read HTTP request")
 		}
 
 		s.log.Debugf("REQUEST URL PATH: %s", request.URL.Path)
@@ -146,13 +148,11 @@ func (s *proxyRequestHandler) OnCommand(cmd cborplugin.Command) error {
 		err = validateRequestURL(request.URL.Path)
 		if err != nil {
 			s.log.Errorf("validateRequestURL failed: %s", err)
-			return fmt.Errorf("validateRequestURL failed: %s", err)
+			return s.sendError(r.ID, r.SURB, fmt.Sprintf("validateRequestURL failed: %s", err.Error()))
 		}
 
 		if request.URL.Path == "/_/probe" {
-			go func() {
-				s.write(&cborplugin.Response{ID: r.ID, SURB: r.SURB, Payload: nil})
-			}()
+			go s.write(&cborplugin.Response{ID: r.ID, SURB: r.SURB, Payload: nil})
 			return nil
 		}
 
@@ -161,13 +161,13 @@ func (s *proxyRequestHandler) OnCommand(cmd cborplugin.Command) error {
 		target, ok := s.cfg.Networks[uri]
 		if !ok {
 			s.log.Error("URI not matched with config Networks")
-			return errors.New("URI not matched with config Networks")
+			return s.sendError(r.ID, r.SURB, "URI not configured in networks")
 		}
 
 		newRequest, err := http.NewRequest(request.Method, target, request.Body)
 		if err != nil {
 			s.log.Errorf("http.NewRequest failed: %s", err)
-			return fmt.Errorf("http.NewRequest failed: %s", err)
+			return s.sendError(r.ID, r.SURB, "Failed to create HTTP request")
 		}
 
 		newRequest.Header.Set("Content-Type", request.Header.Get("Content-Type"))
@@ -176,7 +176,7 @@ func (s *proxyRequestHandler) OnCommand(cmd cborplugin.Command) error {
 		resp, err := http.DefaultClient.Do(newRequest)
 		if err != nil {
 			s.log.Errorf("http.DefaultClient.Do failed: %s", err)
-			return fmt.Errorf("http.DefaultClient.Do failed: %s", err)
+			return s.sendError(r.ID, r.SURB, "HTTP request failed")
 		}
 		defer resp.Body.Close()
 
@@ -185,17 +185,15 @@ func (s *proxyRequestHandler) OnCommand(cmd cborplugin.Command) error {
 		body, err := io.ReadAll(resp.Body)
 		if err != nil {
 			s.log.Errorf("io.ReadAll(resp.Body) failed: %s", err)
-			return fmt.Errorf("io.ReadAll(resp.Body) failed: %s", err)
+			return s.sendError(r.ID, r.SURB, fmt.Sprintf("io.ReadAll(resp.Body) failed: %s", err.Error()))
 		}
 
 		s.log.Debugf("Reply payload: %s", body)
 
 		var response *http_proxy.Response
 		if len(body) > MaxPayloadSize {
-			s.log.Error("http response body exceeds max Sphinx payload")
-			response = &http_proxy.Response{
-				Error: "http response is too big",
-			}
+			s.log.Error("HTTP response body exceeds max Sphinx payload")
+			return s.sendError(r.ID, r.SURB, "HTTP response is too big")
 		} else {
 			response = &http_proxy.Response{
 				Payload: body,
@@ -205,17 +203,22 @@ func (s *proxyRequestHandler) OnCommand(cmd cborplugin.Command) error {
 		payload, err := cbor.Marshal(response)
 		if err != nil {
 			s.log.Errorf("cbor.Marshal(response) failed: %s", err)
-			return fmt.Errorf("cbor.Marshal(response) failed: %s", err)
+			return s.sendError(r.ID, r.SURB, "Error marshaling response")
 		}
 
-		go func() {
-			s.write(&cborplugin.Response{ID: r.ID, SURB: r.SURB, Payload: payload})
-		}()
+		go s.write(&cborplugin.Response{ID: r.ID, SURB: r.SURB, Payload: payload})
 		return nil
 	default:
-		s.log.Errorf("OnCommand called with unknown Command type")
-		return errors.New("Invalid Command type")
+		errMsg := "invalid Command type"
+		s.log.Error(errMsg)
+		return errors.New(errMsg)
 	}
+}
+
+func (s *proxyRequestHandler) sendError(id uint64, surb []byte, msg string) error {
+	payload, _ := cbor.Marshal(&http_proxy.Response{Error: msg})
+	go s.write(&cborplugin.Response{ID: id, SURB: surb, Payload: payload})
+	return errors.New(msg)
 }
 
 // RegisterConsumer is required by our plugin interface
