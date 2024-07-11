@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/charmbracelet/log"
@@ -82,11 +83,19 @@ func main() {
 	}
 
 	if testProbe {
-		server.SendTestProbes(10*time.Second, testProbeCount)
-	} else {
-		http.HandleFunc("/", server.Handler)
-		http.ListenAndServe(listenAddr, nil)
-	}
+        server.SendTestProbes(10*time.Second, testProbeCount)
+    } else {
+        http.HandleFunc("/", server.Handler)
+        err := http.ListenAndServe(listenAddr, nil)
+        if err != nil {
+            // Check if the error is related to the port being in use
+            if strings.Contains(err.Error(), "bind: address already in use") {
+                mylog.Errorf("Cannot start server: Listen port %s is already in use. Please check if another instance of walletshield is running or use another port.", listenAddr)
+            } else {
+                mylog.Errorf("Failed to start HTTP server: %s", err)
+            }
+        }
+    }
 }
 
 type Server struct {
