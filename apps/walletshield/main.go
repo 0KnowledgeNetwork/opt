@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"regexp"
 	"strings"
 	"time"
 
@@ -83,19 +84,19 @@ func main() {
 	}
 
 	if testProbe {
-        server.SendTestProbes(10*time.Second, testProbeCount)
-    } else {
-        http.HandleFunc("/", server.Handler)
-        err := http.ListenAndServe(listenAddr, nil)
-        if err != nil {
-            // Check if the error is related to the port being in use
-            if strings.Contains(err.Error(), "bind: address already in use") {
-                mylog.Errorf("Cannot start server: Listen port %s is already in use. Please check if another instance of walletshield is running or use another port.", listenAddr)
-            } else {
-                mylog.Errorf("Failed to start HTTP server: %s", err)
-            }
-        }
-    }
+		server.SendTestProbes(10*time.Second, testProbeCount)
+	} else {
+		http.HandleFunc("/", server.Handler)
+		err := http.ListenAndServe(listenAddr, nil)
+		if err != nil {
+			// Check if the error is related to the port being in use
+			if strings.Contains(err.Error(), "bind: address already in use") {
+				mylog.Errorf("Cannot start server: Listen port %s is already in use. Please check if another instance of walletshield is running or use another port.", listenAddr)
+			} else {
+				mylog.Errorf("Failed to start HTTP server: %s", err)
+			}
+		}
+	}
 }
 
 type Server struct {
@@ -146,12 +147,28 @@ func (s *Server) Handler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	s.log.Infof("REPLY: '%s'", rawReply)
+	cleanAndLogReply(s.log, rawReply)
 
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Content-Length", fmt.Sprintf("%d", len(response.Payload)))
 	w.WriteHeader(http.StatusOK)
 	fmt.Fprintf(w, string(response.Payload))
+}
+
+func cleanAndLogReply(log *log.Logger, reply []byte) {
+	// Convert byte array to string
+	replyStr := string(reply)
+
+	// Remove non-printable characters
+	re := regexp.MustCompile(`[\x00-\x1F\x7F-\x9F]`)
+	cleanReply := re.ReplaceAllString(replyStr, "")
+
+	// Check for the presence of "error" case-insensitively
+	if re := regexp.MustCompile(`(?i)error`); re.FindString(cleanReply) != "" {
+		log.Errorf("Error detected in REPLY: %s", cleanReply)
+	} else {
+		log.Infof("REPLY: %s", cleanReply)
+	}
 }
 
 func (s *Server) SendTestProbes(d time.Duration, testProbeCount int) {
