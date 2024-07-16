@@ -147,9 +147,9 @@ func (s *Server) Handler(w http.ResponseWriter, req *http.Request) {
 	}
 
 	if strings.Contains(strings.ToLower(response.Payload), "error") {
-        s.log.Errorf("Error in REPLY")
-    } else {
-        s.log.Infof("Successful REPLY: %s", string(response.Payload))
+		s.log.Errorf("Error in REPLY")
+	} else {
+		s.log.Infof("Successful REPLY: %s", string(response.Payload))
     }
 
 	w.Header().Set("Content-Type", "application/json")
