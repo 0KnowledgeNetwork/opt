@@ -52,7 +52,7 @@ func main() {
 		panic(err)
 	}
 	mylog := log.NewWithOptions(os.Stdout, log.Options{
-		Prefix: "daemon",
+		Prefix: "walletshield:",
 		Level:  level,
 	})
 
@@ -105,7 +105,7 @@ type Server struct {
 }
 
 func (s *Server) Handler(w http.ResponseWriter, req *http.Request) {
-	s.log.Info("received http request")
+	s.log.Infof("Received HTTP request for %s", req.URL)
 
 	myurl, err := url.Parse(req.RequestURI)
 	if err != nil {
@@ -121,7 +121,7 @@ func (s *Server) Handler(w http.ResponseWriter, req *http.Request) {
 	request := new(http_proxy.Request)
 	request.Payload = buf.Bytes()
 
-	s.log.Infof("RAW HTTP REQUEST: %s", string(buf.Bytes()))
+	s.log.Debugf("RAW HTTP REQUEST:\n%s", string(buf.Bytes()))
 
 	blob, err := cbor.Marshal(request)
 	if err != nil {
@@ -146,11 +146,10 @@ func (s *Server) Handler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	responsePayloadStr := string(response.Payload)
-	if strings.Contains(strings.ToLower(responsePayloadStr), "error") {
-		s.log.Errorf("Error in REPLY")
+	if response.Error != "" {
+		s.log.Errorf("Response Error: %s", response.Error)
 	} else {
-		s.log.Infof("Successful REPLY: %s", responsePayloadStr)
+		s.log.Infof("Response: %s", response.Payload)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
