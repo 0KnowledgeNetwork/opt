@@ -52,7 +52,7 @@ func main() {
 		panic(err)
 	}
 	mylog := log.NewWithOptions(os.Stdout, log.Options{
-		Prefix: "daemon",
+		Prefix: "walletshield:",
 		Level:  level,
 	})
 
@@ -83,19 +83,19 @@ func main() {
 	}
 
 	if testProbe {
-        server.SendTestProbes(10*time.Second, testProbeCount)
-    } else {
-        http.HandleFunc("/", server.Handler)
-        err := http.ListenAndServe(listenAddr, nil)
-        if err != nil {
-            // Check if the error is related to the port being in use
-            if strings.Contains(err.Error(), "bind: address already in use") {
-                mylog.Errorf("Cannot start server: Listen port %s is already in use. Please check if another instance of walletshield is running or use another port.", listenAddr)
-            } else {
-                mylog.Errorf("Failed to start HTTP server: %s", err)
-            }
-        }
-    }
+		server.SendTestProbes(10*time.Second, testProbeCount)
+	} else {
+		http.HandleFunc("/", server.Handler)
+		err := http.ListenAndServe(listenAddr, nil)
+		if err != nil {
+			// Check if the error is related to the port being in use
+			if strings.Contains(err.Error(), "bind: address already in use") {
+				mylog.Errorf("Cannot start server: Listen port %s is already in use. Please check if another instance of walletshield is running or use another port.", listenAddr)
+			} else {
+				mylog.Errorf("Failed to start HTTP server: %s", err)
+			}
+		}
+	}
 }
 
 type Server struct {
@@ -105,7 +105,7 @@ type Server struct {
 }
 
 func (s *Server) Handler(w http.ResponseWriter, req *http.Request) {
-	s.log.Info("received http request")
+	s.log.Infof("Received HTTP request for %s", req.URL)
 
 	myurl, err := url.Parse(req.RequestURI)
 	if err != nil {
@@ -121,7 +121,7 @@ func (s *Server) Handler(w http.ResponseWriter, req *http.Request) {
 	request := new(http_proxy.Request)
 	request.Payload = buf.Bytes()
 
-	s.log.Infof("RAW HTTP REQUEST: %s", string(buf.Bytes()))
+	s.log.Debugf("RAW HTTP REQUEST:\n%s", string(buf.Bytes()))
 
 	blob, err := cbor.Marshal(request)
 	if err != nil {
@@ -146,7 +146,11 @@ func (s *Server) Handler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	s.log.Infof("REPLY: '%s'", rawReply)
+	if response.Error != "" {
+		s.log.Errorf("Response Error: %s", response.Error)
+	} else {
+		s.log.Infof("Response: %s", response.Payload)
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Content-Length", fmt.Sprintf("%d", len(response.Payload)))
