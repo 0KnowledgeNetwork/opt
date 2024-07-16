@@ -12,7 +12,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"regexp"
 	"strings"
 	"time"
 
@@ -147,7 +146,11 @@ func (s *Server) Handler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	cleanAndLogReply(s.log, rawReply)
+	if strings.Contains(strings.ToLower(response.Payload), "error") {
+        s.log.Errorf("Error in REPLY")
+    } else {
+        s.log.Infof("Successful REPLY: %s", string(response.Payload))
+    }
 
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Content-Length", fmt.Sprintf("%d", len(response.Payload)))
@@ -155,21 +158,6 @@ func (s *Server) Handler(w http.ResponseWriter, req *http.Request) {
 	fmt.Fprintf(w, string(response.Payload))
 }
 
-func cleanAndLogReply(log *log.Logger, reply []byte) {
-	// Convert byte array to string
-	replyStr := string(reply)
-
-	// Remove non-printable characters
-	re := regexp.MustCompile(`[\x00-\x1F\x7F-\x9F]`)
-	cleanReply := re.ReplaceAllString(replyStr, "")
-
-	// Check for the presence of "error" case-insensitively
-	if re := regexp.MustCompile(`(?i)error`); re.FindString(cleanReply) != "" {
-		log.Errorf("Error detected in REPLY: %s", cleanReply)
-	} else {
-		log.Infof("REPLY: %s", cleanReply)
-	}
-}
 
 func (s *Server) SendTestProbes(d time.Duration, testProbeCount int) {
 	req, err := http.NewRequest("GET", "http://nowhere/_/probe", nil)
