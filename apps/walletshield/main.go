@@ -150,14 +150,13 @@ func (s *Server) Handler(w http.ResponseWriter, req *http.Request) {
 		s.log.Errorf("Error in REPLY")
 	} else {
 		s.log.Infof("Successful REPLY: %s", string(response.Payload))
-    }
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Content-Length", fmt.Sprintf("%d", len(response.Payload)))
 	w.WriteHeader(http.StatusOK)
 	fmt.Fprintf(w, string(response.Payload))
 }
-
 
 func (s *Server) SendTestProbes(d time.Duration, testProbeCount int) {
 	req, err := http.NewRequest("GET", "http://nowhere/_/probe", nil)
