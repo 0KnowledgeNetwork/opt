@@ -1,0 +1,5 @@
+{
+  "query": "query ChainId { daemonStatus { chainId } }",
+  "variables": {},
+  "operationName": "ChainId"
+}
