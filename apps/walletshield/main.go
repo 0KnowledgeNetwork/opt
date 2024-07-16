@@ -146,10 +146,11 @@ func (s *Server) Handler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	if strings.Contains(strings.ToLower(response.Payload), "error") {
+	responsePayloadStr := string(response.Payload)
+	if strings.Contains(strings.ToLower(responsePayloadStr), "error") {
 		s.log.Errorf("Error in REPLY")
 	} else {
-		s.log.Infof("Successful REPLY: %s", string(response.Payload))
+		s.log.Infof("Successful REPLY: %s", responsePayloadStr)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
