@@ -1,0 +1,6 @@
+{
+  "jsonrpc": "2.0",
+  "method": "getBlockCommitment",
+  "params": [5],
+  "id": 1
+}

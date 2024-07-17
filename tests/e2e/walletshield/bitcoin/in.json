@@ -1,0 +1,5 @@
+{
+  "id": "test",
+  "method": "getblockhash",
+  "params": [1000]
+}
