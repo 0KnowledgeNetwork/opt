@@ -37,9 +37,7 @@ jobs:
           cd docker && sudo -E make run-walletshield
       
       - name: Test Walletshield
-        continue-on-error: true
-        run: |
-          curl -x http://localhost:7070 -s -o - -w "HTTP Status: %{http_code}\n" http://example.com
+        run: ./tests/e2e/walletshield/test.sh
 
       - name: Stop the Walletshield
         run: |
