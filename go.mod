@@ -3,6 +3,7 @@ module github.com/0KnowledgeNetwork/opt
 go 1.22.3
 
 require (
+	github.com/0KnowledgeNetwork/appchain-agent/clients/go v0.0.0-20240827073047-883be5eeb3fd
 	github.com/BurntSushi/toml v1.4.0
 	github.com/carlmjohnson/versioninfo v0.22.5
 	github.com/charmbracelet/log v0.4.0
@@ -28,6 +29,7 @@ require (
 	github.com/katzenpost/nyquist v0.0.10 // indirect
 	github.com/katzenpost/sntrup4591761 v0.0.0-20231024131303-8755eb1986b8 // indirect
 	github.com/katzenpost/sphincsplus v0.0.2-0.20240114192234-1dc77b544e31 // indirect
+	github.com/lesismal/nbio v1.5.9 // indirect
 	github.com/lucasb-eyer/go-colorful v1.2.0 // indirect
 	github.com/mattn/go-isatty v0.0.18 // indirect
 	github.com/mattn/go-pointer v0.0.1 // indirect
