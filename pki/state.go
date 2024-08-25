@@ -5,7 +5,6 @@
 package main
 
 import (
-	"crypto/hmac"
 	"errors"
 	"fmt"
 	"math"
@@ -13,12 +12,12 @@ import (
 
 	"gopkg.in/op/go-logging.v1"
 
-	"github.com/katzenpost/hpqc/hash"
 	"github.com/katzenpost/hpqc/rand"
 	"github.com/katzenpost/hpqc/sign"
 	"github.com/katzenpost/katzenpost/core/epochtime"
 	"github.com/katzenpost/katzenpost/core/pki"
 
+	"github.com/0KnowledgeNetwork/appchain-agent/clients/go/chainbridge"
 	"github.com/0KnowledgeNetwork/opt/pki/config"
 )
 
@@ -35,8 +34,9 @@ var (
 )
 
 type state struct {
-	s   *Server
-	log *logging.Logger
+	s           *Server
+	log         *logging.Logger
+	chainBridge *chainbridge.ChainBridge
 
 	documents   map[uint64]*pki.Document
 	descriptors map[uint64]map[[publicKeyHashSize]byte]*pki.MixDescriptor
@@ -196,54 +196,40 @@ func (s *state) isDescriptorAuthorized(desc *pki.MixDescriptor) bool {
 	return true // FIXME
 }
 
-// FIXME: send the mix descriptor to the appChain
 func (s *state) onDescriptorUpload(rawDesc []byte, desc *pki.MixDescriptor, epoch uint64) error {
 	// Note: Caller ensures that the epoch is the current epoch +- 1.
-	pk := hash.Sum256(desc.IdentityKey)
 
-	// Get the public key -> descriptor map for the epoch.
-	_, ok := s.descriptors[epoch]
-	if !ok {
-		s.descriptors[epoch] = make(map[[publicKeyHashSize]byte]*pki.MixDescriptor)
-	}
+	_ = rawDesc // unused, but retain function interface
 
-	// Check for redundant uploads.
-	d, ok := s.descriptors[epoch][pk]
-	if ok {
-		// If the descriptor changes, then it will be rejected to prevent
-		// nodes from reneging on uploads.
-		serialized, err := d.MarshalBinary()
-		if err != nil {
-			return err
-		}
-		if !hmac.Equal(serialized, rawDesc) {
-			return fmt.Errorf("state: node %s (%x): Conflicting descriptor for epoch %v", desc.Name, hash.Sum256(desc.IdentityKey), epoch)
-		}
-
-		// Redundant uploads that don't change are harmless.
-		return nil
-	}
-
-	// Ok, this is a new descriptor.
 	_, elapsed, _ := epochtime.Now()
-	if s.documents[epoch] != nil || elapsed > DescriptorUploadDeadline {
-		// If there is a document already, the descriptor is late, and will
-		// never appear in a document, so reject it.
+	if elapsed > DescriptorUploadDeadline {
 		return fmt.Errorf("state: Node %v: Late descriptor upload for for epoch %v", desc.IdentityKey, epoch)
 	}
 
-	// FIXME: send the mix descriptor to the appChain
-	s.log.Debugf("TODO: Upload descriptor to appChain. node %x, epoch %v", pk, epoch)
+	// Register the mix descriptor with the appchain, which will:
+	// - reject redundant descriptors (even those that didn't change)
+	// - reject descriptors if document for the epoch exists
+	payload, err := desc.MarshalBinary()
+	if err != nil {
+		return fmt.Errorf("state: failed to marshal descriptor: %v", err)
+	}
+	chCommand := fmt.Sprintf("pki setMixDescriptor %d %s", epoch, desc.Name)
+	chResponse, err := s.chainBridge.Command(chCommand, payload)
+	s.log.Debugf("ChainBridge response (%s): %+v", chCommand, chResponse)
+	if err != nil {
+		return fmt.Errorf("state: ChainBridge command error: %v", err)
+	}
+	if chResponse.Error != "" {
+		return fmt.Errorf("state: ChainBridge response error: %v", chResponse.Error)
+	}
 
-	// Store the parsed descriptor
-	s.descriptors[epoch][pk] = desc
-
-	s.log.Noticef("Node %x: Successfully submitted descriptor for epoch %v.", pk, epoch)
+	s.log.Noticef("Successfully submitted descriptor for id=%v, epoch=%v", desc.Name, epoch)
 	return nil
 }
 
 // generate docs based on the current epoch schedule
 // this is just a placeholder to trigger document generation
+// or retrieval from appchain
 func (s *state) update() error {
 	epoch, elapsed, nextEpoch := epochtime.Now()
 
@@ -251,46 +237,132 @@ func (s *state) update() error {
 	if elapsed > DescriptorUploadDeadline && s.documents[epoch+1] == nil {
 		s.votingEpoch = epoch + 1
 
+		// retrieve PKI doc from appchain if one already exists for the epoch
+		chCommand := fmt.Sprintf("pki getDocument %d", s.votingEpoch)
+		chResponse, err := s.chainBridge.Command(chCommand, nil)
+		if err != nil {
+			return fmt.Errorf("state: ChainBridge command error: %v", err)
+		}
+		chDoc, err := s.chainBridge.GetDataBytes(chResponse)
+		if err == nil {
+			var doc pki.Document
+			if err = doc.UnmarshalBinary(chDoc); err != nil {
+				return fmt.Errorf("state: failed to unmarshal PKI document: %v", err)
+			} else {
+				// store PKI doc locally
+				s.documents[s.votingEpoch] = &doc
+				s.log.Debugf("pki: ✅ Retrieved doc for epoch %v: %s", s.votingEpoch, doc.String())
+				s.pruneDocuments()
+				return nil
+			}
+		}
+
+		// according to the appchain, there's not yet a PKI doc for the epoch, so generate it
+
+		// get number of descriptors for the given epoch from appchain
+		chCommand = fmt.Sprintf("pki getMixDescriptorCounter %d", s.votingEpoch)
+		chResponse, err = s.chainBridge.Command(chCommand, nil)
+		if err != nil {
+			return fmt.Errorf("state: ChainBridge command error: %v", err)
+		}
+		numDescriptors, err := s.chainBridge.GetDataUInt(chResponse)
+		if err != nil && err != chainbridge.ErrNoData {
+			return fmt.Errorf("state: ChainBridge data error: %v", err)
+		}
+
 		if s.genesisEpoch == 0 {
 			// if no descriptors, the pki probably started too late in the epoch
-			if len(s.descriptors[s.votingEpoch]) == 0 {
+			if numDescriptors == 0 {
 				s.log.Debugf("pki: Epoch %d is gone; a potential genesis epoch but no descriptors", s.votingEpoch)
 				return errGone
 			}
-			s.genesisEpoch = s.votingEpoch
+
+			// get genesis epoch from appchain
+			chResponse, err := s.chainBridge.Command("pki getGenesisEpoch", nil)
+			if err != nil {
+				return fmt.Errorf("state: ChainBridge command error: %v", err)
+			}
+			genesisEpoch, err := s.chainBridge.GetDataUInt(chResponse)
+			if err != nil {
+				return fmt.Errorf("state: ChainBridge data error: %v", err)
+			}
+
+			// if appchain has descriptors, it also has genesis epoch, so set it here
+			s.genesisEpoch = genesisEpoch
 		}
 
 		s.log.Debugf("pki: ⭐ Generating doc for epoch %d, elapsed: %s (> %s), remaining time: %s", s.votingEpoch, elapsed, DescriptorUploadDeadline, nextEpoch)
+
+		// get descriptors from appchain for the approaching epoch
 		descriptors := []*pki.MixDescriptor{}
-		for _, desc := range s.descriptors[s.votingEpoch] {
-			descriptors = append(descriptors, desc)
+		for i := 0; i < int(numDescriptors); i++ {
+			chCommand := fmt.Sprintf("pki getMixDescriptorByIndex %d %d", s.votingEpoch, i)
+			chResponse, err := s.chainBridge.Command(chCommand, nil)
+			if err != nil {
+				s.log.Error("ChainBridge command error: %v", err)
+				continue
+			}
+			dataAsBytes, err := s.chainBridge.GetDataBytes(chResponse)
+			if err != nil {
+				s.log.Error("ChainBridge data error: %v", err)
+				continue
+			}
+
+			var desc pki.MixDescriptor
+			if err = desc.UnmarshalBinary(dataAsBytes); err != nil {
+				s.log.Error("Failed to unmarshal descriptor: %v", err)
+				continue
+			}
+			descriptors = append(descriptors, &desc)
 		}
+
 		var zeros [32]byte
 		doc := s.getDocument(descriptors, s.s.cfg.Parameters, zeros[:])
-		_, err := s.doSignDocument(s.s.identityPrivateKey, s.s.identityPublicKey, doc)
+		_, err = s.doSignDocument(s.s.identityPrivateKey, s.s.identityPublicKey, doc)
 		if err != nil {
 			return err
 		}
 
+		// FIXME: If doc is not wellformed, it currently spins up to this point
+		// continually trying to generate a doc, but not having any new information.
+		// In this case, the epoch failed.
 		err = pki.IsDocumentWellFormed(doc, nil)
 		if err != nil {
-			s.log.Errorf("pki: ⭐ IsDocumentWellFormed: %s", err)
-			return err
+			s.log.Errorf("pki: ❌ IsDocumentWellFormed: %s", err)
+			return errGone
 		}
 
+		// register the PKI doc with the appchain
+		payload, err := doc.MarshalBinary()
+		if err != nil {
+			return fmt.Errorf("state: failed to marshal PKI document: %v", err)
+		}
+		chCommand = fmt.Sprintf("pki setDocument %d", s.votingEpoch)
+		chResponse, err = s.chainBridge.Command(chCommand, payload)
+		s.log.Debugf("ChainBridge response (%s): %+v\n", chCommand, chResponse)
+		if err != nil {
+			s.log.Error("ChainBridge command error: %v", err)
+			return err
+		}
+		if chResponse.Error != "" {
+			s.log.Errorf("ChainBridge response error: %v", chResponse.Error)
+			return errors.New(chResponse.Error)
+		}
+
+		// store PKI doc locally
 		s.documents[s.votingEpoch] = doc
-		s.log.Debugf("pki: 🚀 Generated doc for epoch %v: %s", s.votingEpoch, doc.String())
+
+		s.log.Debugf("pki: ✅ Generated doc for epoch %v: %s", s.votingEpoch, doc.String())
 		s.pruneDocuments()
 	}
 
 	return nil
 }
 
-// FIXME: retrieve document from app chain / smart contract,
 func (s *state) documentForEpoch(epoch uint64) ([]byte, error) {
 	s.log.Debugf("pki: documentForEpoch(%v)", epoch)
 
-	// generate docs based on the epoch schedule
+	// generate or retrieve docs based on the epoch schedule
 	err := s.update()
 	if err != nil {
 		return nil, err
@@ -335,6 +407,18 @@ func newState(s *Server) (*state, error) {
 	st := new(state)
 	st.s = s
 	st.log = s.logBackend.GetLogger("state")
+
+	chainBridgeLogger := s.logBackend.GetLogger("state:chainBridge")
+	st.chainBridge = chainbridge.NewChainBridge("/appchain_mixnet/appchain.sock")
+	st.chainBridge.SetErrorHandler(func(err error) {
+		chainBridgeLogger.Errorf("Error: %v", err)
+	})
+	st.chainBridge.SetLogHandler(func(msg string) {
+		chainBridgeLogger.Infof(msg)
+	})
+	if err := st.chainBridge.Start(); err != nil {
+		chainBridgeLogger.Fatalf("Error: %v", err)
+	}
 
 	// set voting schedule at runtime
 	// TODO: retrieve from appchain
