@@ -27,7 +27,7 @@ const (
 
 // TODO: retrieve epoch schedule from appchain
 var (
-	DescriptorUploadDeadline = epochtime.Period / 4
+	DescriptorUploadDeadline = epochtime.Period * 2 / 4
 	DocGenerationDeadline    = epochtime.Period * 3 / 4
 	errGone                  = errors.New("pki: Requested epoch will never get a Document")
 	errNotYet                = errors.New("pki: Document is not ready yet")
