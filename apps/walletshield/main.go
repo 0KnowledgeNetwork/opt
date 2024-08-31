@@ -4,14 +4,16 @@ import (
 	"bytes"
 	"flag"
 	"fmt"
-	"github.com/katzenpost/hpqc/hash"
 	"net/http"
 	"os"
 
 	"gopkg.in/op/go-logging.v1"
 
+	"github.com/katzenpost/hpqc/hash"
+	"github.com/katzenpost/hpqc/rand"
 	"github.com/katzenpost/katzenpost/client2"
 	"github.com/katzenpost/katzenpost/client2/config"
+	"github.com/katzenpost/katzenpost/client2/thin"
 	"github.com/katzenpost/katzenpost/core/log"
 )
 
@@ -100,8 +102,13 @@ func handleHTTPRequest(client *client2.Client, w http.ResponseWriter, r *http.Re
 	// Set the RecipientQueueID based on the service you are targeting
 	recipientQueueID := []byte("+walletshield")
 
+	// Generate a new message ID for this request
+	messageID := &[thin.MessageIDLength]byte{}
+	_, err = rand.Reader.Read(messageID[:])
+
 	// Prepare the client2 Request object for the mix network
 	mixRequest := &client2.Request{
+		ID:                messageID,
 		DestinationIdHash: &destinationIdHash,
 		RecipientQueueID:  recipientQueueID,
 		Payload:           requestData,
@@ -109,34 +116,40 @@ func handleHTTPRequest(client *client2.Client, w http.ResponseWriter, r *http.Re
 		IsARQSendOp:       true,
 	}
 
-	// Send the request via the mix network
+	// Send the request via the mix network and wait for the response
 	surbKey, rtt, err := client.SendCiphertext(mixRequest)
 	if err != nil {
 		http.Error(w, "Failed to send packet", http.StatusInternalServerError)
 		logger.Errorf("Failed to send packet: %v", err)
 		return
 	}
-	logger.Infof("Packet sent successfully, estimated RTT: %s", rtt)
 
-	// Optionally, wait for a reply if necessary
-	replyPayload, err := waitForReply(client, mixRequest.ID) // Placeholder function
+	response, err := waitForResponse(client, messageID)
 	if err != nil {
-		http.Error(w, "Failed to receive reply", http.StatusInternalServerError)
-		logger.Errorf("Failed to receive reply: %v", err)
+		http.Error(w, "Failed to receive response", http.StatusInternalServerError)
+		logger.Errorf("Failed to receive response: %v", err)
+		return
+	}
+
+	// Extract the payload from the MessageReplyEvent
+	if response.MessageReplyEvent == nil {
+		http.Error(w, "No reply received", http.StatusInternalServerError)
+		logger.Errorf("No reply received in the response")
 		return
 	}
 
 	// Write the reply back to the HTTP client
 	w.Header().Set("Content-Type", "application/octet-stream")
-	w.Header().Set("Content-Length", fmt.Sprintf("%d", len(replyPayload)))
+	w.Header().Set("Content-Length", fmt.Sprintf("%d", len(response.MessageReplyEvent.Payload)))
 	w.WriteHeader(http.StatusOK)
-	_, err = w.Write(replyPayload)
+	_, err = w.Write(response.MessageReplyEvent.Payload)
 	if err != nil {
 		logger.Errorf("Failed to write response: %v", err)
 	}
 }
 
-func waitForReply(client *client2.Client, messageID *[client2.MessageIDLength]byte) ([]byte, error) {
-	// Implement the logic to wait and retrieve the reply here
-	return nil, nil // Placeholder return
+// waitForResponse waits for a response for a given message ID.
+func waitForResponse(client *client2.Client, messageID *[32]byte) (*client2.Response, error) {
+	//todo
+	return nil, nil
 }
