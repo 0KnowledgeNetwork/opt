@@ -61,8 +61,8 @@ func main() {
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		handleHTTPRequest(client, w, r, logger)
 	})
-	logger.Infof("Starting HTTP server on :8080")
-	if err := http.ListenAndServe(":8080", nil); err != nil {
+	logger.Infof("Starting HTTP server on :8888")
+	if err := http.ListenAndServe(":8888", nil); err != nil {
 		logger.Errorf("Failed to start HTTP server: %v", err)
 	}
 }
@@ -99,7 +99,6 @@ func handleHTTPRequest(client *client2.Client, w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	// Set the RecipientQueueID based on the service you are targeting
 	recipientQueueID := []byte("+walletshield")
 
 	// Generate a new message ID for this request
@@ -149,7 +148,6 @@ func handleHTTPRequest(client *client2.Client, w http.ResponseWriter, r *http.Re
 }
 
 // waitForResponse waits for a response for a given message ID.
-func waitForResponse(client *client2.Client, messageID *[32]byte) (*client2.Response, error) {
-	//todo
-	return nil, nil
+func waitForResponse(client *client2.Client, messageID *[thin.MessageIDLength]byte) (*client2.Response, error) {
+	return nil, fmt.Errorf("implement me")
 }
