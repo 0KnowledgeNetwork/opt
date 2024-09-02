@@ -13,19 +13,19 @@ import (
 	"github.com/katzenpost/hpqc/rand"
 	"github.com/katzenpost/katzenpost/client2"
 	"github.com/katzenpost/katzenpost/client2/config"
-	"github.com/katzenpost/katzenpost/client2/thin"
 	"github.com/katzenpost/katzenpost/core/log"
 )
 
 func main() {
 	// Command-line flags
-	var configPath, logFile, logLevel string
+	var configPath, logFile, logLevel, listenAddr string
 	var disableLogging bool
 
 	flag.StringVar(&configPath, "config", "client.toml", "Path to client configuration file")
 	flag.StringVar(&logLevel, "log_level", "DEBUG", "Set the logging level")
 	flag.StringVar(&logFile, "log_file", "", "Log file path")
 	flag.BoolVar(&disableLogging, "disable_logging", false, "Disable logging")
+	flag.StringVar(&listenAddr, "listen_addr", ":8888", "HTTP server listen address")
 	flag.Parse()
 
 	// Initialize logging
@@ -61,8 +61,8 @@ func main() {
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		handleHTTPRequest(client, w, r, logger)
 	})
-	logger.Infof("Starting HTTP server on :8888")
-	if err := http.ListenAndServe(":8888", nil); err != nil {
+	logger.Infof("Starting HTTP server on %s", listenAddr)
+	if err := http.ListenAndServe(listenAddr, nil); err != nil {
 		logger.Errorf("Failed to start HTTP server: %v", err)
 	}
 }
@@ -102,7 +102,7 @@ func handleHTTPRequest(client *client2.Client, w http.ResponseWriter, r *http.Re
 	recipientQueueID := []byte("+walletshield")
 
 	// Generate a new message ID for this request
-	messageID := &[thin.MessageIDLength]byte{}
+	messageID := &[client2.MessageIDLength]byte{}
 	_, err = rand.Reader.Read(messageID[:])
 
 	// Prepare the client2 Request object for the mix network
@@ -138,7 +138,7 @@ func handleHTTPRequest(client *client2.Client, w http.ResponseWriter, r *http.Re
 	}
 
 	// Write the reply back to the HTTP client
-	w.Header().Set("Content-Type", "application/octet-stream")
+	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Content-Length", fmt.Sprintf("%d", len(response.MessageReplyEvent.Payload)))
 	w.WriteHeader(http.StatusOK)
 	_, err = w.Write(response.MessageReplyEvent.Payload)
@@ -148,6 +148,7 @@ func handleHTTPRequest(client *client2.Client, w http.ResponseWriter, r *http.Re
 }
 
 // waitForResponse waits for a response for a given message ID.
-func waitForResponse(client *client2.Client, messageID *[thin.MessageIDLength]byte) (*client2.Response, error) {
-	return nil, fmt.Errorf("implement me")
+func waitForResponse(client *client2.Client, messageID *[client2.MessageIDLength]byte) (*client2.Response, error) {
+	// Implementation needed here
+	return nil, fmt.Errorf("response waiting not implemented")
 }
