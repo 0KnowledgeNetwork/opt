@@ -5,7 +5,8 @@ package main
 
 import (
 	"bytes"
-	"context"
+	"crypto/hmac"
+	"errors"
 	"flag"
 	"fmt"
 	"math"
@@ -18,12 +19,24 @@ import (
 	"github.com/charmbracelet/log"
 	"github.com/fxamacker/cbor/v2"
 
-	"github.com/katzenpost/katzenpost/client"
-	"github.com/katzenpost/katzenpost/client/config"
-	"github.com/katzenpost/katzenpost/client/utils"
+	"github.com/katzenpost/hpqc/hash"
+	"github.com/katzenpost/hpqc/rand"
+
+	"github.com/katzenpost/katzenpost/client2"
+	"github.com/katzenpost/katzenpost/client2/common"
+	"github.com/katzenpost/katzenpost/client2/config"
+	"github.com/katzenpost/katzenpost/client2/thin"
+	sConstants "github.com/katzenpost/katzenpost/core/sphinx/constants"
 
 	"github.com/0KnowledgeNetwork/opt/server_plugins/cbor_plugins/http_proxy"
 )
+
+type Server struct {
+	log    *log.Logger
+	daemon *client2.Daemon
+	thin   *thin.ThinClient
+	target *common.ServiceDescriptor
+}
 
 func main() {
 	var logLevel string
@@ -56,30 +69,37 @@ func main() {
 		Level:  level,
 	})
 
-	// mixnet client
+	// start client2 daemon
 	cfg, err := config.LoadFile(configPath)
 	if err != nil {
 		panic(err)
 	}
-	c, err := client.New(cfg)
+
+	d, err := client2.NewDaemon(cfg)
 	if err != nil {
 		panic(err)
 	}
-	session, err := c.NewTOFUSession(context.Background())
+	err = d.Start()
 	if err != nil {
 		panic(err)
 	}
+
+	time.Sleep(time.Second * 3) // XXX ugly hack but works: FIXME
+
+	thin := thin.NewThinClient(cfg)
+
 	ProxyHTTPService := "http_proxy"
-	desc, err := session.GetService(ProxyHTTPService)
+	desc, err := thin.GetService(ProxyHTTPService)
 	if err != nil {
 		panic(err)
 	}
 
 	// http server
 	server := &Server{
-		log:     mylog,
-		session: session,
-		target:  desc,
+		log:    mylog,
+		thin:   thin,
+		daemon: d,
+		target: desc,
 	}
 
 	if testProbe {
@@ -98,10 +118,50 @@ func main() {
 	}
 }
 
-type Server struct {
-	log     *log.Logger
-	session *client.Session
-	target  *utils.ServiceDescriptor
+func sendAndWait(client *thin.ThinClient, log *log.Logger, message []byte, nodeID *[32]byte, queueID []byte) ([]byte, error) {
+	surbID := client.NewSURBID()
+	eventSink := client.EventSink()
+	err := client.SendMessage(surbID, message, nodeID, queueID)
+	if err != nil {
+		return nil, err
+	}
+
+	shutdownCh := make(chan interface{})
+	for {
+		var event thin.Event
+		select {
+		case event = <-eventSink:
+		case <-shutdownCh: // exit if halted
+			// interrupt caught, shutdown client
+			log.Info("Interrupt caught - shutting down client")
+			client.Halt()
+			return nil, errors.New("Interrupt caught - shut down client")
+		}
+
+		switch v := event.(type) {
+		case *thin.MessageIDGarbageCollected:
+			log.Info("MessageIDGarbageCollected")
+		case *thin.ConnectionStatusEvent:
+			log.Info("ConnectionStatusEvent")
+			if !v.IsConnected {
+				panic("socket connection lost")
+			}
+		case *thin.NewDocumentEvent:
+			log.Info("NewPKIDocumentEvent")
+		case *thin.MessageSentEvent:
+			log.Info("MessageSentEvent")
+		case *thin.MessageReplyEvent:
+			log.Info("MessageReplyEvent")
+			if hmac.Equal(surbID[:], v.SURBID[:]) {
+				return v.Payload, nil
+			} else {
+				return nil, errors.New("received MessageReplyEvent with unexpected SURB ID")
+			}
+		default:
+			panic("impossible event type")
+		}
+	}
+	// unreachable
 }
 
 func (s *Server) Handler(w http.ResponseWriter, req *http.Request) {
@@ -128,7 +188,27 @@ func (s *Server) Handler(w http.ResponseWriter, req *http.Request) {
 		panic(err)
 	}
 
-	rawReply, err := s.session.BlockingSendUnreliableMessage(s.target.Name, s.target.Provider, blob)
+	doc := s.thin.PKIDocument()
+	if doc == nil {
+		s.log.Errorf("Failed to retrieve PKI document")
+		return
+	}
+	var destinationIdHash [32]byte
+	if len(doc.ServiceNodes) > 0 {
+		node := doc.ServiceNodes[0] // Choose the first service node for simplicity
+		destinationIdHash = hash.Sum256(node.IdentityKey)
+	} else {
+		s.log.Errorf("No service nodes available in PKI document")
+		return
+	}
+	surbID := &[sConstants.SURBIDLength]byte{}
+	_, err = rand.Reader.Read(surbID[:])
+	if err != nil {
+		panic(err)
+	}
+	recipientQueueID := []byte("+walletshield")
+
+	rawReply, err := sendAndWait(s.thin, s.log, blob, &destinationIdHash, recipientQueueID)
 	if err != nil {
 		s.log.Errorf("Failed to send message: %s", err)
 		http.Error(w, "custom 404", http.StatusNotFound)
@@ -176,7 +256,30 @@ func (s *Server) SendTestProbes(d time.Duration, testProbeCount int) {
 	for {
 		packetsTransmitted++
 		t := time.Now()
-		_, err := s.session.BlockingSendUnreliableMessage(s.target.Name, s.target.Provider, blob)
+
+		// Select a target service node and compute the DestinationIdHash
+
+		doc := s.thin.PKIDocument()
+		if doc == nil {
+			s.log.Errorf("Failed to retrieve PKI document")
+			return
+		}
+		var destinationIdHash [32]byte
+		if len(doc.ServiceNodes) > 0 {
+			node := doc.ServiceNodes[0] // Choose the first service node for simplicity
+			destinationIdHash = hash.Sum256(node.IdentityKey)
+		} else {
+			s.log.Errorf("No service nodes available in PKI document")
+			return
+		}
+		surbID := &[sConstants.SURBIDLength]byte{}
+		_, err := rand.Reader.Read(surbID[:])
+		if err != nil {
+			panic(err)
+		}
+		recipientQueueID := []byte("+walletshield")
+
+		_, err = sendAndWait(s.thin, s.log, blob, &destinationIdHash, recipientQueueID)
 		elapsed := time.Since(t).Seconds()
 		if err != nil {
 			s.log.Errorf("Probe failed after %.2fs: %s", elapsed, err)
