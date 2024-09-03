@@ -5,8 +5,6 @@ package main
 
 import (
 	"bytes"
-	"crypto/hmac"
-	"errors"
 	"flag"
 	"fmt"
 	"math"
@@ -122,52 +120,6 @@ func main() {
 	}
 }
 
-func sendAndWait(client *thin.ThinClient, log *log.Logger, message []byte, nodeID *[32]byte, queueID []byte) ([]byte, error) {
-	surbID := client.NewSURBID()
-	eventSink := client.EventSink()
-	err := client.SendMessage(surbID, message, nodeID, queueID)
-	if err != nil {
-		return nil, err
-	}
-
-	shutdownCh := make(chan interface{})
-	for {
-		var event thin.Event
-		select {
-		case event = <-eventSink:
-		case <-shutdownCh: // exit if halted
-			// interrupt caught, shutdown client
-			log.Info("Interrupt caught - shutting down client")
-			client.Halt()
-			return nil, errors.New("Interrupt caught - shut down client")
-		}
-
-		switch v := event.(type) {
-		case *thin.MessageIDGarbageCollected:
-			log.Info("MessageIDGarbageCollected")
-		case *thin.ConnectionStatusEvent:
-			log.Info("ConnectionStatusEvent")
-			if !v.IsConnected {
-				panic("socket connection lost")
-			}
-		case *thin.NewDocumentEvent:
-			log.Info("NewPKIDocumentEvent")
-		case *thin.MessageSentEvent:
-			log.Info("MessageSentEvent")
-		case *thin.MessageReplyEvent:
-			log.Info("MessageReplyEvent")
-			if hmac.Equal(surbID[:], v.SURBID[:]) {
-				return v.Payload, nil
-			} else {
-				return nil, errors.New("received MessageReplyEvent with unexpected SURB ID")
-			}
-		default:
-			panic("impossible event type")
-		}
-	}
-	// unreachable
-}
-
 func (s *Server) Handler(w http.ResponseWriter, req *http.Request) {
 	s.log.Infof("Received HTTP request for %s", req.URL)
 
@@ -212,7 +164,7 @@ func (s *Server) Handler(w http.ResponseWriter, req *http.Request) {
 	}
 	recipientQueueID := []byte("+walletshield")
 
-	rawReply, err := sendAndWait(s.thin, s.log, blob, &destinationIdHash, recipientQueueID)
+	rawReply, err := s.thin.BlockingSendMessage(blob, &destinationIdHash, recipientQueueID)
 	if err != nil {
 		s.log.Errorf("Failed to send message: %s", err)
 		http.Error(w, "custom 404", http.StatusNotFound)
@@ -283,7 +235,7 @@ func (s *Server) SendTestProbes(d time.Duration, testProbeCount int) {
 		}
 		recipientQueueID := []byte("+walletshield")
 
-		_, err = sendAndWait(s.thin, s.log, blob, &destinationIdHash, recipientQueueID)
+		_, err = s.thin.BlockingSendMessage(blob, &destinationIdHash, recipientQueueID)
 		elapsed := time.Since(t).Seconds()
 		if err != nil {
 			s.log.Errorf("Probe failed after %.2fs: %s", elapsed, err)

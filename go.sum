@@ -35,6 +35,8 @@ github.com/katzenpost/hpqc v0.0.44 h1:on5EVxsfiKE3wuQA1Ny7BWr1QfrcRn8oatX7YS6GWn
 github.com/katzenpost/hpqc v0.0.44/go.mod h1:J8YAH9Qe2wCPSLChuSSPxDmUTal/gNZBdr3xynxJcoA=
 github.com/katzenpost/katzenpost v0.0.36-0.20240821201045-ed031cbb8e59 h1:YEK5Exi2aKS5ypjgXEBcOIKjv8dZD/bIijlIofdoZac=
 github.com/katzenpost/katzenpost v0.0.36-0.20240821201045-ed031cbb8e59/go.mod h1:gC758tCWh1mAzRMWdv68eEHysbVetEp7H6KgLrgw7Qk=
+github.com/katzenpost/katzenpost v0.0.36-0.20240903214059-5853165b2963 h1:dy1wPPoHY9RDM7bJausVBuhzxK6dXZcsGBQ4yHmw9mo=
+github.com/katzenpost/katzenpost v0.0.36-0.20240903214059-5853165b2963/go.mod h1:gC758tCWh1mAzRMWdv68eEHysbVetEp7H6KgLrgw7Qk=
 github.com/katzenpost/nyquist v0.0.10 h1:rh9TCEXCsutsg+cvbV6ASVFnzSAYBisWQ3fnwQSPa34=
 github.com/katzenpost/nyquist v0.0.10/go.mod h1:tyK92JiCptgsaE0iUAMlt5W2v2Rdw6mnUpIdIidIGHo=
 github.com/katzenpost/sntrup4591761 v0.0.0-20231024131303-8755eb1986b8 h1:TsKxH0x2RUwf5rBw67k15bqVM3oVbexA9oaTZQLIy3Y=
