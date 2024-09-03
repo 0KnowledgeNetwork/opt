@@ -70,7 +70,8 @@ gid?=$(shell [ "$$SUDO_GID" != "" ] && echo "$$SUDO_GID" || id -g)
 opt_workspace=/go/opt
 katzenpost_workspace=/go/katzenpost
 katzenpost_dir=./katzenpost
-katzenpost_version=$(shell grep -E '^	github.com/katzenpost/katzenpost ' ../go.mod | awk '{print $$2}')
+#katzenpost_version=$(shell grep -E '^	github.com/katzenpost/katzenpost ' ../go.mod | awk '{print $$2}')
+katzenpost_version='client2'
 
 docker_user?=$(shell if echo ${docker}|grep -q podman; then echo 0:0; else echo ${uid}:${gid}; fi)
 docker_args=--user ${docker_user} --volume $(shell readlink -f $(katzenpost_dir)):$(katzenpost_workspace) --workdir $(katzenpost_workspace) -v $(shell readlink -f .)/$(cache_dir)/go:/go/ -v $(shell readlink -f .)/$(cache_dir)/root_cache:/root/.cache
