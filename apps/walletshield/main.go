@@ -87,6 +87,10 @@ func main() {
 	time.Sleep(time.Second * 3) // XXX ugly hack but works: FIXME
 
 	thin := thin.NewThinClient(cfg)
+	err = thin.Dial()
+	if err != nil {
+		panic(err)
+	}
 
 	ProxyHTTPService := "http_proxy"
 	desc, err := thin.GetService(ProxyHTTPService)
