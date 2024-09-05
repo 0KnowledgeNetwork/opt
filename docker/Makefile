@@ -30,6 +30,15 @@ net_dir=$(katzenpost_dir)/docker/$(net_name)
 # export variables to the environment for consumption by invoked Makefile(s)
 export
 
+.PHONY: help
+help:
+	@echo
+	@echo "These make targets allow you to control custom apps:"
+	@echo " walletshield-start - start walletshield client"
+	@echo " walletshield-logs  - show walletshield logs"
+	@echo " walletshield-stop  - stop walletshield client"
+	@$(MAKE) -e -C $(katzenpost_dir)/docker $@
+
 .PHONY: custom-binaries
 custom-binaries: $(net_dir)/http_proxy.$(distro)
 
@@ -55,14 +64,18 @@ $(net_dir)/http_proxy.$(distro): $(katzenpost_dir)/docker/$(distro)_base.stamp |
 $(net_dir)/walletshield.$(distro): $(katzenpost_dir)/docker/$(distro)_base.stamp | $(net_name) $(cache_dir)
 	$(docker_run_sh) 'cd /go/opt/apps/walletshield ; go build -trimpath -ldflags ${ldflags} && mv walletshield /$(net_name)/walletshield.$(distro)'
 
-.PHONY: start-walletshield
-run-walletshield: $(net_dir)/walletshield.$(distro) $(net_dir)/running.stamp
-	$(docker) run -d --network=host $(opt_docker_args) $(mount_net_name) --name walletshield --rm katzenpost-$(distro)_base \
-		/$(net_name)/walletshield.$(distro) -config /$(net_name)/client/client.toml -listen :7070 -log_level DEBUG
+.PHONY: walletshield-start
+walletshield-start: $(net_dir)/walletshield.$(distro) $(net_dir)/running.stamp | $(cache_dir)
+	$(docker) run -d --network=host $(docker_args) $(mount_net_name) --name walletshield katzenpost-$(distro)_base \
+		/$(net_name)/walletshield.$(distro) -config /$(net_name)/client2/client.toml -listen :7070 -log_level DEBUG
 
-.PHONY: stop-walletshield
-stop-walletshield:
-	$(docker) stop walletshield
+.PHONY: walletshield-logs
+walletshield-logs:
+	$(docker) logs --tail=100 walletshield
+
+.PHONY: walletshield-stop
+walletshield-stop:
+	$(docker) stop walletshield && $(docker) rm walletshield
 
 # start the testnet in the background with the local customizations
 start: clone-katzenpost custom-genconfig $(docker_compose_yml) custom-binaries
@@ -72,3 +85,22 @@ start: clone-katzenpost custom-genconfig $(docker_compose_yml) custom-binaries
 %: clone-katzenpost
 	@echo ">> Passing '$@' to $(katzenpost_dir)/docker/Makefile"
 	$(MAKE) -e -C $(katzenpost_dir)/docker $@
+
+########################################################################
+# FIXME: kpclientd belongs to katzenpost/docker/Makefile
+########################################################################
+$(net_dir)/kpclientd.$(distro): $(katzenpost_dir)/docker/$(distro)_base.stamp | $(net_name) $(cache_dir)
+	$(docker_run_sh) 'cd client2/cmd/kpclientd ; go build -trimpath -ldflags ${ldflags} && mv kpclientd /$(net_name)/kpclientd.$(distro)'
+
+.PHONY: kpclientd-start
+kpclientd-start: $(net_dir)/kpclientd.$(distro) $(net_dir)/running.stamp | $(cache_dir)
+	$(docker) run -d --network=host $(docker_args) $(mount_net_name) --name kpclientd katzenpost-$(distro)_base \
+		/$(net_name)/kpclientd.$(distro) -c /$(net_name)/client2/client.toml
+
+.PHONY: kpclientd-logs
+kpclientd-logs:
+	$(docker) logs --tail=100 kpclientd
+
+.PHONY: kpclientd-stop
+kpclientd-stop:
+	$(docker) stop kpclientd && $(docker) rm kpclientd
