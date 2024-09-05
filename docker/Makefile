@@ -10,7 +10,6 @@ distro=alpine
 net_name=voting_mixnet
 docker_compose_yml=$(net_name)/docker-compose.yml
 sh=$(shell if echo ${distro}|grep -q alpine; then echo sh; else echo bash; fi)
-SHELL=/bin/bash
 cache_dir=cache
 log_level=DEBUG
 docker=$(shell if which podman|grep -q .; then echo podman; else echo docker; fi)
@@ -18,7 +17,7 @@ ldflags="-buildid= -X github.com/katzenpost/katzenpost/core/epochtime.WarpedEpoc
 uid?=$(shell [ "$$SUDO_UID" != "" ] && echo "$$SUDO_UID" || id -u)
 gid?=$(shell [ "$$SUDO_GID" != "" ] && echo "$$SUDO_GID" || id -g)
 docker_user?=$(shell if echo ${docker}|grep -q podman; then echo 0:0; else echo ${uid}:${gid}; fi)
-docker_args=--user ${docker_user} --volume $(shell readlink -f $(katzenpost_dir)):/go/katzenpost --workdir /go/katzenpost
+docker_args=--user ${docker_user} --volume $(shell readlink -f $(katzenpost_dir)):/go/katzenpost --workdir /go/katzenpost -v $(shell readlink -f $(katzenpost_dir))/docker/$(cache_dir)/go:/go/ -e GOCACHE=/go/cache
 mount_net_name=-v $(katzenpost_dir)/docker/$(net_name):/$(net_name)
 mount_opt=-v $(shell readlink -f ..):/go/opt
 docker_run_sh=$(docker) run ${docker_args} $(mount_net_name) $(mount_opt) --rm katzenpost-$(distro)_base $(sh) -c
@@ -49,11 +48,11 @@ clone-katzenpost:
 custom-genconfig:
 	cp ../genconfig/main.go $(katzenpost_dir)/genconfig/main.go
 
-$(net_dir)/http_proxy.$(distro): $(katzenpost_dir)/docker/$(distro)_base.stamp | $(net_name)
+$(net_dir)/http_proxy.$(distro): $(katzenpost_dir)/docker/$(distro)_base.stamp | $(net_name) $(cache_dir)
 	$(docker_run_sh) 'cd /go/opt/server_plugins/cbor_plugins/http_proxy/cmd/http_proxy ; go build -trimpath -ldflags ${ldflags} && mv http_proxy /$(net_name)/http_proxy.$(distro)'
 	cp ../server_plugins/cbor_plugins/http_proxy/http_proxy_config.toml $(net_dir)/servicenode1/
 
-$(net_dir)/walletshield.$(distro): $(katzenpost_dir)/docker/$(distro)_base.stamp | $(net_name)
+$(net_dir)/walletshield.$(distro): $(katzenpost_dir)/docker/$(distro)_base.stamp | $(net_name) $(cache_dir)
 	$(docker_run_sh) 'cd /go/opt/apps/walletshield ; go build -trimpath -ldflags ${ldflags} && mv walletshield /$(net_name)/walletshield.$(distro)'
 
 .PHONY: start-walletshield
