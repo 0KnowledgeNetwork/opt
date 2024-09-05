@@ -34,15 +34,17 @@ jobs:
 
       - name: Start kpclientd
         run: |
-          cd docker && sudo -E make kpclientd-start
+          cd docker
+          sudo -E make kpclientd-start
           sleep 10
-          cd docker && sudo -E make kpclientd-logs
+          sudo -E make kpclientd-logs
 
       - name: Start walletshield
         run: |
-          cd docker && sudo -E make walletshield-start
+          cd docker
+          sudo -E make walletshield-start
           sleep 10
-          cd docker && sudo -E make walletshield-logs
+          sudo -E make walletshield-logs
       
       - name: Test walletshield
         run: ./tests/e2e/walletshield/test.sh
