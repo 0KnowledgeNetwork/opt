@@ -1,18 +1,5 @@
-// genconfig.go - Katzenpost self contained test network.
-// Copyright (C) 2022  Yawning Angel, David Stainton, Masala
-//
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU Affero General Public License as
-// published by the Free Software Foundation, either version 3 of the
-// License, or (at your option) any later version.
-//
-// This program is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-// GNU Affero General Public License for more details.
-//
-// You should have received a copy of the GNU Affero General Public License
-// along with this program.  If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: Copyright (C) 2022  Yawning Angel, David Stainton, Masala
+// SPDX-License-Identifier: AGPL-3.0-only
 
 package main
 
@@ -21,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
@@ -38,6 +26,8 @@ import (
 
 	vConfig "github.com/katzenpost/katzenpost/authority/voting/server/config"
 	cConfig "github.com/katzenpost/katzenpost/client/config"
+	cConfig2 "github.com/katzenpost/katzenpost/client2/config"
+	cpki "github.com/katzenpost/katzenpost/core/pki"
 	"github.com/katzenpost/katzenpost/core/sphinx/geo"
 	sConfig "github.com/katzenpost/katzenpost/server/config"
 )
@@ -76,6 +66,9 @@ type katzenpost struct {
 	gatewayIdx     int
 	serviceNodeIdx int
 	hasPanda       bool
+	hasProxy       bool
+	noMixDecoy     bool
+	debugConfig    *cConfig.Debug
 }
 
 type AuthById []*vConfig.Authority
@@ -89,6 +82,100 @@ type NodeById []*vConfig.Node
 func (a NodeById) Len() int           { return len(a) }
 func (a NodeById) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
 func (a NodeById) Less(i, j int) bool { return a[i].Identifier < a[j].Identifier }
+
+func addressesFromURLs(addrs []string) map[string][]string {
+	addresses := make(map[string][]string)
+	for _, addr := range addrs {
+		u, err := url.Parse(addr)
+		if err != nil {
+			continue
+		}
+		switch u.Scheme {
+		case cpki.TransportTCP, cpki.TransportTCPv4, cpki.TransportTCPv6, cpki.TransportHTTP:
+			if _, ok := addresses[u.Scheme]; !ok {
+				addresses[u.Scheme] = make([]string, 0)
+			}
+			addresses[u.Scheme] = append(addresses[u.Scheme], u.String())
+		default:
+			continue
+		}
+	}
+	return addresses
+}
+
+func (s *katzenpost) genClient2Cfg() error {
+	log.Print("genClient2Cfg begin")
+	os.Mkdir(filepath.Join(s.outDir, "client2"), 0700)
+	cfg := new(cConfig2.Config)
+
+	//cfg.ListenNetwork = "unixpacket"
+	//cfg.ListenAddress = "@katzenpost"
+
+	cfg.ListenNetwork = "tcp"
+	cfg.ListenAddress = "localhost:64331"
+
+	cfg.PKISignatureScheme = s.pkiSignatureScheme.Name()
+	cfg.WireKEMScheme = s.wireKEMScheme
+	cfg.SphinxGeometry = s.sphinxGeometry
+
+	// Logging section.
+	cfg.Logging = &cConfig2.Logging{File: "", Level: "DEBUG"}
+
+	// UpstreamProxy section
+	cfg.UpstreamProxy = &cConfig2.UpstreamProxy{Type: "none"}
+
+	// VotingAuthority section
+
+	peers := make([]*vConfig.Authority, 0)
+	for _, peer := range s.authorities {
+		peers = append(peers, peer)
+	}
+
+	sort.Sort(AuthById(peers))
+
+	cfg.VotingAuthority = &cConfig2.VotingAuthority{Peers: peers}
+
+	// Debug section
+	cfg.Debug = &cConfig2.Debug{DisableDecoyTraffic: s.debugConfig.DisableDecoyTraffic}
+
+	log.Print("before gathering providers")
+	gateways := make([]*cConfig2.Gateway, 0)
+	for i := 0; i < len(s.nodeConfigs); i++ {
+		if s.nodeConfigs[i].Gateway == nil {
+			continue
+		}
+
+		idPubKey := cfgIdKey(s.nodeConfigs[i], s.outDir)
+		linkPubKey := cfgLinkKey(s.nodeConfigs[i], s.outDir, cfg.WireKEMScheme)
+
+		gateway := &cConfig2.Gateway{
+			PKISignatureScheme: s.pkiSignatureScheme.Name(),
+			WireKEMScheme:      s.wireKEMScheme,
+			Name:               s.nodeConfigs[i].Server.Identifier,
+			IdentityKey:        idPubKey,
+			LinkKey:            linkPubKey,
+			Addresses:          s.nodeConfigs[i].Server.Addresses,
+		}
+		gateways = append(gateways, gateway)
+	}
+	if len(gateways) == 0 {
+		panic("wtf 0 providers")
+	}
+	log.Print("after gathering providers")
+	cfg.PinnedGateways = &cConfig2.Gateways{
+		Gateways: gateways,
+	}
+
+	log.Print("before save config")
+	err := saveCfg(cfg, s.outDir)
+	if err != nil {
+		log.Printf("save config failure %s", err.Error())
+		return err
+	}
+	log.Print("after save config")
+	log.Print("genClient2Cfg end")
+	return nil
+}
 
 func (s *katzenpost) genClientCfg() error {
 	os.Mkdir(filepath.Join(s.outDir, "client"), 0700)
@@ -119,7 +206,7 @@ func (s *katzenpost) genClientCfg() error {
 	cfg.VotingAuthority = &cConfig.VotingAuthority{Peers: peers}
 
 	// Debug section
-	cfg.Debug = &cConfig.Debug{DisableDecoyTraffic: true}
+	cfg.Debug = s.debugConfig
 	err := saveCfg(cfg, s.outDir)
 	if err != nil {
 		return err
@@ -154,7 +241,13 @@ func (s *katzenpost) genNodeConfig(isGateway, isServiceNode bool, isVoting bool)
 	cfg.Server.WireKEM = s.wireKEMScheme
 	cfg.Server.PKISignatureScheme = s.pkiSignatureScheme.Name()
 	cfg.Server.Identifier = n
-	cfg.Server.Addresses = []string{fmt.Sprintf("%s:%d", s.bindAddr, s.lastPort)}
+	if isGateway {
+		cfg.Server.Addresses = []string{fmt.Sprintf("http://127.0.0.1:%d", s.lastPort), fmt.Sprintf("tcp://127.0.0.1:%d", s.lastPort+1)}
+		s.lastPort += 2
+	} else {
+		cfg.Server.Addresses = []string{fmt.Sprintf("http://127.0.0.1:%d", s.lastPort)}
+		s.lastPort += 1
+	}
 	cfg.Server.DataDir = filepath.Join(s.baseDir, n)
 
 	os.Mkdir(filepath.Join(s.outDir, cfg.Server.Identifier), 0700)
@@ -164,21 +257,18 @@ func (s *katzenpost) genNodeConfig(isGateway, isServiceNode bool, isVoting bool)
 	if isGateway {
 		cfg.Management = new(sConfig.Management)
 		cfg.Management.Enable = true
-		cfg.Server.AltAddresses = map[string][]string{
-			"TCP": []string{fmt.Sprintf("localhost:%d", s.lastPort)},
-		}
 	}
 	if isServiceNode {
 		cfg.Management = new(sConfig.Management)
 		cfg.Management.Enable = true
 	}
 	// Enable Metrics endpoint
-	s.lastPort += 1
 	cfg.Server.MetricsAddress = fmt.Sprintf("127.0.0.1:%d", s.lastPort)
+	s.lastPort += 1
 
 	// Debug section.
 	cfg.Debug = new(sConfig.Debug)
-	cfg.Debug.SendDecoyTraffic = false
+	cfg.Debug.SendDecoyTraffic = !s.noMixDecoy
 
 	// PKI section.
 	if isVoting {
@@ -208,6 +298,66 @@ func (s *katzenpost) genNodeConfig(isGateway, isServiceNode bool, isVoting bool)
 
 		// configure an entry provider or a spool storage provider
 		cfg.ServiceNode = &sConfig.ServiceNode{}
+		spoolCfg := &sConfig.CBORPluginKaetzchen{
+			Capability:     "spool",
+			Endpoint:       "+spool",
+			Command:        s.baseDir + "/memspool" + s.binSuffix,
+			MaxConcurrency: 1,
+			Config: map[string]interface{}{
+				"data_store": s.baseDir + "/" + cfg.Server.Identifier + "/memspool.storage",
+				"log_dir":    s.baseDir + "/" + cfg.Server.Identifier,
+			},
+		}
+		cfg.ServiceNode.CBORPluginKaetzchen = []*sConfig.CBORPluginKaetzchen{spoolCfg}
+
+		if !s.hasPanda {
+			mapCfg := &sConfig.CBORPluginKaetzchen{
+				Capability:     "pigeonhole",
+				Endpoint:       "+pigeonhole",
+				Command:        s.baseDir + "/pigeonhole" + s.binSuffix,
+				MaxConcurrency: 1,
+				Config: map[string]interface{}{
+					"db":      s.baseDir + "/" + cfg.Server.Identifier + "/map.storage",
+					"log_dir": s.baseDir + "/" + cfg.Server.Identifier,
+				},
+			}
+
+			cfg.ServiceNode.CBORPluginKaetzchen = []*sConfig.CBORPluginKaetzchen{spoolCfg, mapCfg}
+			if !s.hasPanda {
+				pandaCfg := &sConfig.CBORPluginKaetzchen{
+					Capability:     "panda",
+					Endpoint:       "+panda",
+					Command:        s.baseDir + "/panda_server" + s.binSuffix,
+					MaxConcurrency: 1,
+					Config: map[string]interface{}{
+						"fileStore": s.baseDir + "/" + cfg.Server.Identifier + "/panda.storage",
+						"log_dir":   s.baseDir + "/" + cfg.Server.Identifier,
+						"log_level": s.logLevel,
+					},
+				}
+				cfg.ServiceNode.CBORPluginKaetzchen = append(cfg.ServiceNode.CBORPluginKaetzchen, pandaCfg)
+				s.hasPanda = true
+			}
+
+			// Add a single instance of a http proxy for a service listening on port 4242
+			if !s.hasProxy {
+				proxyCfg := &sConfig.CBORPluginKaetzchen{
+					Capability:     "http",
+					Endpoint:       "+http",
+					Command:        s.baseDir + "/proxy_server" + s.binSuffix,
+					MaxConcurrency: 1,
+					Config: map[string]interface{}{
+						// allow connections to localhost:4242
+						"host":      "localhost:4242",
+						"log_dir":   s.baseDir + "/" + cfg.Server.Identifier,
+						"log_level": "DEBUG",
+					},
+				}
+				cfg.ServiceNode.CBORPluginKaetzchen = append(cfg.ServiceNode.CBORPluginKaetzchen, proxyCfg)
+				s.hasProxy = true
+			}
+			cfg.Debug.NumKaetzchenWorkers = 4
+		}
 
 		httpProxyCfg := &sConfig.CBORPluginKaetzchen{
 			Capability:     "http_proxy",
@@ -219,12 +369,17 @@ func (s *katzenpost) genNodeConfig(isGateway, isServiceNode bool, isVoting bool)
 				"config":  s.baseDir + "/" + cfg.Server.Identifier + "/" + "http_proxy_config.toml",
 			},
 		}
-		cfg.ServiceNode.CBORPluginKaetzchen = []*sConfig.CBORPluginKaetzchen{httpProxyCfg}
+		cfg.ServiceNode.CBORPluginKaetzchen = append(cfg.ServiceNode.CBORPluginKaetzchen, httpProxyCfg)
 
 		echoCfg := new(sConfig.Kaetzchen)
 		echoCfg.Capability = "echo"
 		echoCfg.Endpoint = "+echo"
 		cfg.ServiceNode.Kaetzchen = append(cfg.ServiceNode.Kaetzchen, echoCfg)
+		testdestCfg := new(sConfig.Kaetzchen)
+		testdestCfg.Capability = "testdest"
+		testdestCfg.Endpoint = "+testdest"
+		cfg.ServiceNode.Kaetzchen = append(cfg.ServiceNode.Kaetzchen, testdestCfg)
+
 	} else if isGateway {
 		s.gatewayIdx++
 		cfg.Gateway = &sConfig.Gateway{}
@@ -232,8 +387,9 @@ func (s *katzenpost) genNodeConfig(isGateway, isServiceNode bool, isVoting bool)
 		s.nodeIdx++
 	}
 	s.nodeConfigs = append(s.nodeConfigs, cfg)
-	s.lastPort++
 	_ = cfgIdKey(cfg, s.outDir)
+	_ = cfgLinkKey(cfg, s.outDir, s.wireKEMScheme)
+	log.Print("genNodeConfig end")
 	return cfg.FixupAndValidate()
 }
 
@@ -250,7 +406,7 @@ func (s *katzenpost) genVotingAuthoritiesCfg(numAuthorities int, parameters *vCo
 			WireKEMScheme:      s.wireKEMScheme,
 			PKISignatureScheme: s.pkiSignatureScheme.Name(),
 			Identifier:         fmt.Sprintf("auth%d", i),
-			Addresses:          []string{fmt.Sprintf("%s:%d", s.bindAddr, s.lastPort)},
+			Addresses:          []string{fmt.Sprintf("http://127.0.0.1:%d", s.lastPort)},
 			DataDir:            filepath.Join(s.baseDir, fmt.Sprintf("auth%d", i)),
 		}
 		os.Mkdir(filepath.Join(s.outDir, cfg.Server.Identifier), 0700)
@@ -338,9 +494,14 @@ func main() {
 	wirekem := flag.String("wirekem", "", "Name of the KEM Scheme to be used with wire protocol")
 	kem := flag.String("kem", "", "Name of the KEM Scheme to be used with Sphinx")
 	nike := flag.String("nike", "x25519", "Name of the NIKE Scheme to be used with Sphinx")
-	ratchetNike := flag.String("ratchetNike", "x25519", "Name of the NIKE Scheme to be used with the doubleratchet")
+	ratchetNike := flag.String("ratchetNike", "CTIDH512-X25519", "Name of the NIKE Scheme to be used with the doubleratchet")
 	UserForwardPayloadLength := flag.Int("UserForwardPayloadLength", 2000, "UserForwardPayloadLength")
 	pkiSignatureScheme := flag.String("pkiScheme", "Ed25519", "PKI Signature Scheme to be used")
+	noDecoy := flag.Bool("noDecoy", true, "Disable decoy traffic for the client")
+	noMixDecoy := flag.Bool("noMixDecoy", true, "Disable decoy traffic for the mixes")
+	dialTimeout := flag.Int("dialTimeout", 0, "Session dial timeout")
+	maxPKIDelay := flag.Int("maxPKIDelay", 0, "Initial maximum PKI retrieval delay")
+	pollingIntvl := flag.Int("pollingIntvl", 0, "Polling interval")
 
 	sr := flag.Uint64("sr", 0, "Sendrate limit")
 	mu := flag.Float64("mu", 0.005, "Inverse of mean of per hop delay.")
@@ -403,6 +564,13 @@ func main() {
 	s.lastPort = s.basePort + 1
 	s.bindAddr = *bindAddr
 	s.logLevel = *logLevel
+	s.debugConfig = &cConfig.Debug{
+		DisableDecoyTraffic:         *noDecoy,
+		SessionDialTimeout:          *dialTimeout,
+		InitialMaxPKIRetrievalDelay: *maxPKIDelay,
+		PollingInterval:             *pollingIntvl,
+	}
+	s.noMixDecoy = *noMixDecoy
 
 	nrHops := *nrLayers + 2
 
@@ -509,11 +677,15 @@ func main() {
 		log.Fatalf("%s", err)
 	}
 
-	err = s.genDockerCompose(*dockerImage)
+	err = s.genClient2Cfg() // depends on genClientCfg()
 	if err != nil {
 		log.Fatalf("%s", err)
 	}
 
+	err = s.genDockerCompose(*dockerImage)
+	if err != nil {
+		log.Fatalf("%s", err)
+	}
 	err = s.genPrometheus()
 	if err != nil {
 		log.Fatalf("%s", err)
@@ -524,6 +696,8 @@ func identifier(cfg interface{}) string {
 	switch cfg.(type) {
 	case *cConfig.Config:
 		return "client"
+	case *cConfig2.Config:
+		return "client2"
 	case *sConfig.Config:
 		return cfg.(*sConfig.Config).Server.Identifier
 	case *vConfig.Config:
@@ -537,6 +711,8 @@ func identifier(cfg interface{}) string {
 func toml_name(cfg interface{}) string {
 	switch cfg.(type) {
 	case *cConfig.Config:
+		return "client"
+	case *cConfig2.Config:
 		return "client"
 	case *sConfig.Config:
 		return "katzenpost"
@@ -600,6 +776,9 @@ func cfgLinkKey(cfg interface{}, outDir string, kemScheme string) kem.PublicKey 
 	var linkpublic string
 
 	switch cfg.(type) {
+	case *sConfig.Config:
+		linkpriv = filepath.Join(outDir, cfg.(*sConfig.Config).Server.Identifier, "link.private.pem")
+		linkpublic = filepath.Join(outDir, cfg.(*sConfig.Config).Server.Identifier, "link.public.pem")
 	case *vConfig.Config:
 		linkpriv = filepath.Join(outDir, cfg.(*vConfig.Config).Server.Identifier, "link.private.pem")
 		linkpublic = filepath.Join(outDir, cfg.(*vConfig.Config).Server.Identifier, "link.public.pem")
