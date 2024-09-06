@@ -5,6 +5,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"flag"
 	"fmt"
 	"math"
@@ -163,8 +164,8 @@ func (s *Server) Handler(w http.ResponseWriter, req *http.Request) {
 		panic(err)
 	}
 	recipientQueueID := []byte("+walletshield")
-
-	rawReply, err := s.thin.BlockingSendMessage(blob, &destinationIdHash, recipientQueueID)
+	timeoutCtx, _ := context.WithTimeout(context.TODO(), (time.Second * 200))
+	rawReply, err := s.thin.BlockingSendMessage(timeoutCtx, blob, &destinationIdHash, recipientQueueID)
 	if err != nil {
 		s.log.Errorf("Failed to send message: %s", err)
 		http.Error(w, "custom 404", http.StatusNotFound)
@@ -235,7 +236,8 @@ func (s *Server) SendTestProbes(d time.Duration, testProbeCount int) {
 		}
 		recipientQueueID := []byte("+walletshield")
 
-		_, err = s.thin.BlockingSendMessage(blob, &destinationIdHash, recipientQueueID)
+		timeoutCtx, _ := context.WithTimeout(context.TODO(), (time.Second * 200))
+		_, err = s.thin.BlockingSendMessage(timeoutCtx, blob, &destinationIdHash, recipientQueueID)
 		elapsed := time.Since(t).Seconds()
 		if err != nil {
 			s.log.Errorf("Probe failed after %.2fs: %s", elapsed, err)
