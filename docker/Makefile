@@ -30,6 +30,18 @@ net_dir=$(katzenpost_dir)/docker/$(net_name)
 # export variables to the environment for consumption by invoked Makefile(s)
 export
 
+define SERVICENODE_PLUGINS
+  [[ServiceNode.CBORPluginKaetzchen]]
+    Capability = "http_proxy"
+    Endpoint = "http_proxy"
+    Command = "/$(net_name)/http_proxy.$(distro)"
+    MaxConcurrency = 1
+    Disable = false
+    [ServiceNode.CBORPluginKaetzchen.Config]
+      config = "/$(net_name)/servicenode1/http_proxy_config.toml"
+      log_dir = "/$(net_name)/servicenode1"
+endef
+
 .PHONY: help
 help:
 	@echo
@@ -42,6 +54,10 @@ help:
 .PHONY: custom-binaries
 custom-binaries: $(net_dir)/http_proxy.$(distro)
 
+.PHONY: custom-config
+custom-config:
+	printf '%s\n' "$$SERVICENODE_PLUGINS" | sed -i '/^\[ServiceNode\]/r /dev/stdin' $(net_dir)/servicenode1/katzenpost.toml
+
 .PHONY: clone-katzenpost
 clone-katzenpost:
 	if [ ! -d "$(katzenpost_dir)" ]; then \
@@ -52,10 +68,6 @@ clone-katzenpost:
 			https://github.com/katzenpost/katzenpost.git \
 			$(katzenpost_dir); \
 	fi
-
-.PHONY: custom-genconfig
-custom-genconfig:
-	cp ../genconfig/main.go $(katzenpost_dir)/genconfig/main.go
 
 $(net_dir)/http_proxy.$(distro): $(katzenpost_dir)/docker/$(distro)_base.stamp | $(net_name) $(cache_dir)
 	$(docker_run_sh) 'cd /go/opt/server_plugins/cbor_plugins/http_proxy/cmd/http_proxy ; go build -trimpath -ldflags ${ldflags} && mv http_proxy /$(net_name)/http_proxy.$(distro)'
@@ -83,7 +95,7 @@ clean:
 	rm -rf $(katzenpost_dir)
 
 # start the testnet in the background with the local customizations
-start: clone-katzenpost custom-genconfig $(docker_compose_yml) custom-binaries
+start: clone-katzenpost $(docker_compose_yml) custom-config custom-binaries
 	$(MAKE) -e -C $(katzenpost_dir)/docker $@
 
 # pass through all other targets to katzenpost/docker/Makefile

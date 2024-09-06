@@ -1,7 +1,2 @@
 apps/walletshield/walletshield
-docker/*.stamp
-docker/cache
-docker/katzenpost
-docker/voting_mixnet
-genconfig/genconfig
 server_plugins/cbor_plugins/http_proxy/cmd/http_proxy/http_proxy
