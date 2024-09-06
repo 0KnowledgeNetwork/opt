@@ -77,6 +77,11 @@ walletshield-logs:
 walletshield-stop:
 	$(docker) stop walletshield && $(docker) rm walletshield
 
+.PHONY: clean
+clean:
+	$(MAKE) -e -C $(katzenpost_dir)/docker $@
+	rm -rf $(katzenpost_dir)
+
 # start the testnet in the background with the local customizations
 start: clone-katzenpost custom-genconfig $(docker_compose_yml) custom-binaries
 	$(MAKE) -e -C $(katzenpost_dir)/docker $@
