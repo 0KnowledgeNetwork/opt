@@ -32,13 +32,6 @@ jobs:
       - name: run ping
         run: cd docker && sudo -E make run-ping
 
-      - name: Start kpclientd
-        run: |
-          cd docker
-          sudo -E make kpclientd-start
-          sleep 10
-          sudo -E make kpclientd-logs
-
       - name: Start walletshield
         run: |
           cd docker
@@ -51,11 +44,9 @@ jobs:
 
       - name: Stop walletshield
         run: |
-          cd docker && sudo -E make walletshield-stop
-
-      - name: Stop kpclientd
-        run: |
-          cd docker && sudo -E make kpclientd-stop
+          cd docker
+          sudo -E make walletshield-logs
+          sudo -E make walletshield-stop
 
       - name: Stop the mixnet
         run: |
