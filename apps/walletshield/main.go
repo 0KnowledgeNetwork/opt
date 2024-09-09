@@ -234,7 +234,7 @@ func (s *Server) SendTestProbes(d time.Duration, testProbeCount int) {
 		if err != nil {
 			panic(err)
 		}
-		recipientQueueID := []byte("+walletshield")
+		recipientQueueID := []byte("http_proxy")
 
 		timeoutCtx, _ := context.WithTimeout(context.TODO(), (time.Second * 200))
 		_, err = s.thin.BlockingSendMessage(timeoutCtx, blob, &destinationIdHash, recipientQueueID)
