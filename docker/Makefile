@@ -87,10 +87,10 @@ walletshield-logs:
 
 .PHONY: walletshield-stop
 walletshield-stop:
-	$(docker) stop walletshield && $(docker) rm walletshield
+	-$(docker) stop walletshield && $(docker) rm walletshield
 
 .PHONY: clean
-clean:
+clean: walletshield-stop
 	$(MAKE) -e -C $(katzenpost_dir)/docker $@
 	rm -rf $(katzenpost_dir)
 
