@@ -32,6 +32,9 @@ jobs:
       - name: run ping
         run: cd docker && sudo -E make run-ping
 
+      - name: run walletshield test probe
+        run: cd docker && sudo -E make walletshield-probe
+
       - name: Start walletshield
         run: |
           cd docker
