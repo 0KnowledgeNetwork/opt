@@ -8,12 +8,16 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"path/filepath"
 	"time"
 
 	"gopkg.in/op/go-logging.v1"
 
+	"github.com/katzenpost/hpqc/hash"
 	"github.com/katzenpost/hpqc/rand"
 	"github.com/katzenpost/hpqc/sign"
+	signpem "github.com/katzenpost/hpqc/sign/pem"
+	signSchemes "github.com/katzenpost/hpqc/sign/schemes"
 	"github.com/katzenpost/katzenpost/core/epochtime"
 	"github.com/katzenpost/katzenpost/core/pki"
 
@@ -168,32 +172,39 @@ func (s *state) pruneDocuments() {
 	}
 }
 
-// FIXME: Ensure that the descriptor is from an allowed peer.
-// TODO: consult with the appChain
+// Ensure that the descriptor is from an allowed peer according to the appchain
 func (s *state) isDescriptorAuthorized(desc *pki.MixDescriptor) bool {
-	s.log.Debugf("TODO: check appchain for isDescriptorAuthorized: name: %v", desc.Name)
+	chCommand := fmt.Sprintf("nodes getNode %s", desc.Name)
+	chResponse, err := s.chainBridge.Command(chCommand, nil)
+	if err != nil {
+		s.log.Errorf("state: ChainBridge command error: %v", err)
+		return false
+	}
 
-	// pk := hash.Sum256(desc.IdentityKey)
-	// if !desc.IsGatewayNode && !desc.IsServiceNode {
-	// 	return s.authorizedMixes[pk]
-	// }
-	// if desc.IsGatewayNode {
-	// 	name, ok := s.authorizedGatewayNodes[pk]
-	// 	if !ok {
-	// 		return false
-	// 	}
-	// 	return name == desc.Name
-	// }
-	// if desc.IsServiceNode {
-	// 	name, ok := s.authorizedServiceNodes[pk]
-	// 	if !ok {
-	// 		return false
-	// 	}
-	// 	return name == desc.Name
-	// }
-	// panic("impossible")
+	var node chainbridge.Node
+	err = s.chainBridge.DataUnmarshal(chResponse, &node)
+	if err != nil {
+		if err != chainbridge.ErrNoData {
+			s.log.Errorf("state: ChainBridge data error: %v", err)
+		}
+		return false
+	}
 
-	return true // FIXME
+	pk := hash.Sum256(desc.IdentityKey)
+	if pk != hash.Sum256(node.IdentityKey) {
+		s.log.Debugf("state: IdentityKey mismatch for node %s", desc.Name)
+		return false
+	}
+
+	if desc.IsGatewayNode != node.IsGatewayNode {
+		return false
+	}
+
+	if desc.IsServiceNode != node.IsServiceNode {
+		return false
+	}
+
+	return true
 }
 
 func (s *state) onDescriptorUpload(rawDesc []byte, desc *pki.MixDescriptor, epoch uint64) error {
@@ -418,6 +429,60 @@ func newState(s *Server) (*state, error) {
 	})
 	if err := st.chainBridge.Start(); err != nil {
 		chainBridgeLogger.Fatalf("Error: %v", err)
+	}
+
+	pkiSignatureScheme := signSchemes.ByName(s.cfg.Server.PKISignatureScheme)
+
+	registerNode := func(v *config.Node, isGatewayNode bool, isServiceNode bool) {
+		var identityPublicKey sign.PublicKey
+		var err error
+		if filepath.IsAbs(v.IdentityPublicKeyPem) {
+			identityPublicKey, err = signpem.FromPublicPEMFile(v.IdentityPublicKeyPem, pkiSignatureScheme)
+			if err != nil {
+				panic(err)
+			}
+		} else {
+			pemFilePath := filepath.Join(s.cfg.Server.DataDir, v.IdentityPublicKeyPem)
+			identityPublicKey, err = signpem.FromPublicPEMFile(pemFilePath, pkiSignatureScheme)
+			if err != nil {
+				panic(err)
+			}
+		}
+
+		payload, err := identityPublicKey.MarshalBinary()
+		if err != nil {
+			st.log.Errorf("failed to marshal identityPublicKey: %v", err)
+			return
+		}
+		pk := hash.Sum256From(identityPublicKey)
+		chCommand := fmt.Sprintf(
+			"nodes register %s %d %d",
+			v.Identifier,
+			chainbridge.Bool2int(isGatewayNode),
+			chainbridge.Bool2int(isServiceNode))
+		chResponse, err := st.chainBridge.Command(chCommand, payload)
+		s.log.Debugf("ChainBridge response (%s): %+v", chCommand, chResponse)
+		if err != nil {
+			st.log.Errorf("ChainBridge command error: %v", err)
+			return
+		}
+		if chResponse.Error != "" {
+			st.log.Errorf("ChainBridge response error: %v", chResponse.Error)
+			return
+		}
+
+		s.log.Noticef("Successfully registered node with Identifier '%s', Identity key hash '%x'", v.Identifier, pk)
+	}
+
+	// Initialize the authorized peer tables.
+	for _, v := range st.s.cfg.Mixes {
+		registerNode(v, false, false)
+	}
+	for _, v := range st.s.cfg.GatewayNodes {
+		registerNode(v, true, false)
+	}
+	for _, v := range st.s.cfg.ServiceNodes {
+		registerNode(v, false, true)
 	}
 
 	// set voting schedule at runtime

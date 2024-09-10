@@ -316,7 +316,13 @@ type Config struct {
 	Logging    *Logging
 	Parameters *Parameters
 	Debug      *Debug
-	Topology   *Topology
+
+	// Note: these are an iterative step; useful to register non-volunteer nodes within the appchain
+	Mixes        []*Node
+	GatewayNodes []*Node
+	ServiceNodes []*Node
+
+	Topology *Topology
 
 	SphinxGeometry *geo.Geometry
 }
