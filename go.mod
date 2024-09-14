@@ -3,7 +3,7 @@ module github.com/0KnowledgeNetwork/opt
 go 1.22.3
 
 require (
-	github.com/0KnowledgeNetwork/appchain-agent/clients/go v0.0.0-20240827073047-883be5eeb3fd
+	github.com/0KnowledgeNetwork/appchain-agent/clients/go v0.0.0-20240914010045-aa4ab8a6b16d
 	github.com/BurntSushi/toml v1.3.2
 	github.com/carlmjohnson/versioninfo v0.22.5
 	github.com/charmbracelet/log v0.4.0
