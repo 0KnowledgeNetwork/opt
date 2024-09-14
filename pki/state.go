@@ -174,7 +174,7 @@ func (s *state) pruneDocuments() {
 
 // Ensure that the descriptor is from an allowed peer according to the appchain
 func (s *state) isDescriptorAuthorized(desc *pki.MixDescriptor) bool {
-	chCommand := fmt.Sprintf("nodes getNode %s", desc.Name)
+	chCommand := fmt.Sprintf(chainbridge.Cmd_nodes_getNode, desc.Name)
 	chResponse, err := s.chainBridge.Command(chCommand, nil)
 	if err != nil {
 		s.log.Errorf("state: ChainBridge command error: %v", err)
@@ -224,7 +224,7 @@ func (s *state) onDescriptorUpload(rawDesc []byte, desc *pki.MixDescriptor, epoc
 	if err != nil {
 		return fmt.Errorf("state: failed to marshal descriptor: %v", err)
 	}
-	chCommand := fmt.Sprintf("pki setMixDescriptor %d %s", epoch, desc.Name)
+	chCommand := fmt.Sprintf(chainbridge.Cmd_pki_setMixDescriptor, epoch, desc.Name)
 	chResponse, err := s.chainBridge.Command(chCommand, payload)
 	s.log.Debugf("ChainBridge response (%s): %+v", chCommand, chResponse)
 	if err != nil {
@@ -249,7 +249,7 @@ func (s *state) update() error {
 		s.votingEpoch = epoch + 1
 
 		// retrieve PKI doc from appchain if one already exists for the epoch
-		chCommand := fmt.Sprintf("pki getDocument %d", s.votingEpoch)
+		chCommand := fmt.Sprintf(chainbridge.Cmd_pki_getDocucment, s.votingEpoch)
 		chResponse, err := s.chainBridge.Command(chCommand, nil)
 		if err != nil {
 			return fmt.Errorf("state: ChainBridge command error: %v", err)
@@ -271,7 +271,7 @@ func (s *state) update() error {
 		// according to the appchain, there's not yet a PKI doc for the epoch, so generate it
 
 		// get number of descriptors for the given epoch from appchain
-		chCommand = fmt.Sprintf("pki getMixDescriptorCounter %d", s.votingEpoch)
+		chCommand = fmt.Sprintf(chainbridge.Cmd_pki_getMixDescriptorCounter, s.votingEpoch)
 		chResponse, err = s.chainBridge.Command(chCommand, nil)
 		if err != nil {
 			return fmt.Errorf("state: ChainBridge command error: %v", err)
@@ -289,7 +289,7 @@ func (s *state) update() error {
 			}
 
 			// get genesis epoch from appchain
-			chResponse, err := s.chainBridge.Command("pki getGenesisEpoch", nil)
+			chResponse, err := s.chainBridge.Command(chainbridge.Cmd_pki_getGenesisEpoch, nil)
 			if err != nil {
 				return fmt.Errorf("state: ChainBridge command error: %v", err)
 			}
@@ -307,7 +307,7 @@ func (s *state) update() error {
 		// get descriptors from appchain for the approaching epoch
 		descriptors := []*pki.MixDescriptor{}
 		for i := 0; i < int(numDescriptors); i++ {
-			chCommand := fmt.Sprintf("pki getMixDescriptorByIndex %d %d", s.votingEpoch, i)
+			chCommand := fmt.Sprintf(chainbridge.Cmd_pki_getMixDescriptorByIndex, s.votingEpoch, i)
 			chResponse, err := s.chainBridge.Command(chCommand, nil)
 			if err != nil {
 				s.log.Error("ChainBridge command error: %v", err)
@@ -348,7 +348,7 @@ func (s *state) update() error {
 		if err != nil {
 			return fmt.Errorf("state: failed to marshal PKI document: %v", err)
 		}
-		chCommand = fmt.Sprintf("pki setDocument %d", s.votingEpoch)
+		chCommand = fmt.Sprintf(chainbridge.Cmd_pki_setDocument, s.votingEpoch)
 		chResponse, err = s.chainBridge.Command(chCommand, payload)
 		s.log.Debugf("ChainBridge response (%s): %+v\n", chCommand, chResponse)
 		if err != nil {
@@ -456,7 +456,7 @@ func newState(s *Server) (*state, error) {
 		}
 		pk := hash.Sum256From(identityPublicKey)
 		chCommand := fmt.Sprintf(
-			"nodes register %s %d %d",
+			chainbridge.Cmd_nodes_register,
 			v.Identifier,
 			chainbridge.Bool2int(isGatewayNode),
 			chainbridge.Bool2int(isServiceNode))
