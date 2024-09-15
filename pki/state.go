@@ -7,7 +7,6 @@ package main
 import (
 	"errors"
 	"fmt"
-	"math"
 	"path/filepath"
 	"time"
 
@@ -20,6 +19,7 @@ import (
 	signSchemes "github.com/katzenpost/hpqc/sign/schemes"
 	"github.com/katzenpost/katzenpost/core/epochtime"
 	"github.com/katzenpost/katzenpost/core/pki"
+	"github.com/katzenpost/katzenpost/core/worker"
 
 	"github.com/0KnowledgeNetwork/appchain-agent/clients/go/chainbridge"
 	"github.com/0KnowledgeNetwork/opt/pki/config"
@@ -35,9 +35,12 @@ var (
 	DocGenerationDeadline    = epochtime.Period * 3 / 4
 	errGone                  = errors.New("pki: Requested epoch will never get a Document")
 	errNotYet                = errors.New("pki: Document is not ready yet")
+	errInvalidTopology       = errors.New("authority: Invalid Topology")
 )
 
 type state struct {
+	worker.Worker
+
 	s           *Server
 	log         *logging.Logger
 	chainBridge *chainbridge.ChainBridge
@@ -47,15 +50,6 @@ type state struct {
 
 	votingEpoch  uint64
 	genesisEpoch uint64
-}
-
-// from katzenpost:authority/voting/server/server.go
-func computeLambdaG(cfg *config.Config) float64 {
-	n := float64(len(cfg.Topology.Layers[0].Nodes))
-	if n == 1 {
-		return cfg.Parameters.LambdaP + cfg.Parameters.LambdaL + cfg.Parameters.LambdaD
-	}
-	return n * math.Log(n)
 }
 
 func (s *state) doSignDocument(signer sign.PrivateKey, verifier sign.PublicKey, d *pki.Document) ([]byte, error) {

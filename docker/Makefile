@@ -69,10 +69,10 @@ clone-katzenpost:
 			$(katzenpost_dir); \
 	fi
 
-$(net_name)/pki.$(distro): $(katzenpost_dir)/docker/$(distro)_base.stamp $(docker_compose_yml) | $(net_name) $(cache_dir)
+$(net_dir)/pki.$(distro): $(katzenpost_dir)/docker/$(distro)_base.stamp $(docker_compose_yml) | $(net_name) $(cache_dir)
 	$(docker_run_sh) 'cd /go/opt/pki ; go build -trimpath -ldflags ${ldflags} && mv pki /$(net_name)/pki.$(distro)'
 	# replace the voting auth with our custom pki
-	sed -i.bak "s/voting\.$(distro)/pki\.$(distro)/" $(docker_compose_yml)
+	sed -i.bak "s/voting\.$(distro)/pki\.$(distro)/" $(katzenpost_dir)/docker/$(docker_compose_yml)
 
 $(net_dir)/http_proxy.$(distro): $(katzenpost_dir)/docker/$(distro)_base.stamp | $(net_name) $(cache_dir)
 	$(docker_run_sh) 'cd /go/opt/server_plugins/cbor_plugins/http_proxy/cmd/http_proxy ; go build -trimpath -ldflags ${ldflags} && mv http_proxy /$(net_name)/http_proxy.$(distro)'
