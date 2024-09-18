@@ -419,7 +419,7 @@ func newState(s *Server) (*state, error) {
 	st.log = s.logBackend.GetLogger("state")
 
 	chainBridgeLogger := s.logBackend.GetLogger("state:chainBridge")
-	st.chainBridge = chainbridge.NewChainBridge("/appchain_mixnet/appchain.sock")
+	st.chainBridge = chainbridge.NewChainBridge(filepath.Join(s.cfg.Server.DataDir, "appchain.sock"))
 	st.chainBridge.SetErrorHandler(func(err error) {
 		chainBridgeLogger.Errorf("Error: %v", err)
 	})
