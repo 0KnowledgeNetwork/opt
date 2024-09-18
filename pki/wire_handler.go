@@ -238,16 +238,9 @@ func (a *wireAuthenticator) IsPeerValid(creds *wire.PeerCredentials) bool {
 	pk := [hash.HashSize]byte{}
 	copy(pk[:], creds.AdditionalData[:hash.HashSize])
 
-	// FIXME: query the app chain to determine if
-	// the identity is a mix or a gateway or service node.
-	isMix := true
-	isGatewayNode := false
-	isServiceNode := false
-	//_, isMix := a.s.state.authorizedMixes[pk]
-	//_, isGatewayNode := a.s.state.authorizedGatewayNodes[pk]
-	//_, isServiceNode := a.s.state.authorizedServiceNodes[pk]
-
-	if isMix || isGatewayNode || isServiceNode {
+	_, isRegistered := a.s.state.registeredLocalNodes[pk]
+	if isRegistered {
+		a.s.log.Debugf("Accepting authority authentication from locally registered node with public key '%x'", pk)
 		a.isMix = true // Gateways and service nodes and mixes are all mixes.
 		return true
 	} else {

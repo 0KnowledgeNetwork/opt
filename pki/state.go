@@ -45,6 +45,10 @@ type state struct {
 	log         *logging.Logger
 	chainBridge *chainbridge.ChainBridge
 
+	// locally registered node(s), only one allowed
+	// authority authentication for descriptor uploads is limited to this
+	registeredLocalNodes map[[publicKeyHashSize]byte]bool
+
 	documents   map[uint64]*pki.Document
 	descriptors map[uint64]map[[publicKeyHashSize]byte]*pki.MixDescriptor
 
@@ -470,10 +474,12 @@ func newState(s *Server) (*state, error) {
 			return
 		}
 
+		st.registeredLocalNodes[pk] = true
 		s.log.Noticef("Successfully registered node with Identifier '%s', Identity key hash '%x'", v.Identifier, pk)
 	}
 
 	// Initialize the authorized peer tables.
+	st.registeredLocalNodes = make(map[[publicKeyHashSize]byte]bool)
 	for _, v := range st.s.cfg.Mixes {
 		registerNode(v, false, false)
 	}
@@ -482,6 +488,10 @@ func newState(s *Server) (*state, error) {
 	}
 	for _, v := range st.s.cfg.ServiceNodes {
 		registerNode(v, false, true)
+	}
+
+	if len(st.registeredLocalNodes) > 1 {
+		st.log.Fatalf("Error: Configuration found for more than one local node")
 	}
 
 	// set voting schedule at runtime
