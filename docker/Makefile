@@ -1,8 +1,10 @@
 warped?=true
 mixes=3
-auths=1
 gateways=1
 serviceNodes=1
+
+# each node gets its own auth
+auths=5
 
 UserForwardPayloadLength=30000
 
@@ -56,6 +58,7 @@ custom-binaries: $(net_dir)/http_proxy.$(distro) $(net_dir)/pki.$(distro)
 
 .PHONY: custom-config
 custom-config:
+	rsync -av $(net_name)/ $(net_dir)/
 	printf '%s\n' "$$SERVICENODE_PLUGINS" | sed -i '/^\[ServiceNode\]/r /dev/stdin' $(net_dir)/servicenode1/katzenpost.toml
 
 .PHONY: clone-katzenpost
