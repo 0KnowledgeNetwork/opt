@@ -242,6 +242,17 @@ func (s *state) update() error {
 	if elapsed > DescriptorUploadDeadline && s.documents[epoch+1] == nil {
 		s.votingEpoch = epoch + 1
 
+		// sign and store PKI doc locally
+		cacheLocalDoc := func(doc *pki.Document) error {
+			_, err := s.doSignDocument(s.s.identityPrivateKey, s.s.identityPublicKey, doc)
+			if err != nil {
+				return err
+			}
+			s.documents[s.votingEpoch] = doc
+			s.pruneDocuments()
+			return nil
+		}
+
 		// retrieve PKI doc from appchain if one already exists for the epoch
 		chCommand := fmt.Sprintf(chainbridge.Cmd_pki_getDocucment, s.votingEpoch)
 		chResponse, err := s.chainBridge.Command(chCommand, nil)
@@ -254,11 +265,8 @@ func (s *state) update() error {
 			if err = doc.UnmarshalBinary(chDoc); err != nil {
 				return fmt.Errorf("state: failed to unmarshal PKI document: %v", err)
 			} else {
-				// store PKI doc locally
-				s.documents[s.votingEpoch] = &doc
 				s.log.Debugf("pki: ✅ Retrieved doc for epoch %v: %s", s.votingEpoch, doc.String())
-				s.pruneDocuments()
-				return nil
+				return cacheLocalDoc(&doc)
 			}
 		}
 
@@ -323,10 +331,10 @@ func (s *state) update() error {
 
 		var zeros [32]byte
 		doc := s.getDocument(descriptors, s.s.cfg.Parameters, zeros[:])
-		_, err = s.doSignDocument(s.s.identityPrivateKey, s.s.identityPublicKey, doc)
-		if err != nil {
-			return err
-		}
+
+		// Note: For appchain-pki, upload unsigned document and sign it upon serve.
+		// SignDocument sets doc version, required by IsDocumentWellFormed
+		doc.Version = pki.DocumentVersion
 
 		// FIXME: If doc is not wellformed, it currently spins up to this point
 		// continually trying to generate a doc, but not having any new information.
@@ -335,6 +343,10 @@ func (s *state) update() error {
 		if err != nil {
 			s.log.Errorf("pki: ❌ IsDocumentWellFormed: %s", err)
 			return errGone
+		}
+
+		if err := cacheLocalDoc(doc); err != nil {
+			return err
 		}
 
 		// register the PKI doc with the appchain
@@ -349,16 +361,9 @@ func (s *state) update() error {
 			s.log.Error("ChainBridge command error: %v", err)
 			return err
 		}
-		if chResponse.Error != "" {
-			s.log.Errorf("ChainBridge response error: %v", chResponse.Error)
-			return errors.New(chResponse.Error)
-		}
-
-		// store PKI doc locally
-		s.documents[s.votingEpoch] = doc
+		// ignore the most likely chResponse.Error: "Document already exists for the epoch"
 
 		s.log.Debugf("pki: ✅ Generated doc for epoch %v: %s", s.votingEpoch, doc.String())
-		s.pruneDocuments()
 	}
 
 	return nil
