@@ -58,7 +58,7 @@ custom-binaries: $(net_dir)/http_proxy.$(distro) $(net_dir)/pki.$(distro)
 
 .PHONY: custom-config
 custom-config:
-	rsync -av $(net_name)/ $(net_dir)/
+	rsync -av --no-perms $(net_name)/ $(net_dir)/
 	printf '%s\n' "$$SERVICENODE_PLUGINS" | sed -i '/^\[ServiceNode\]/r /dev/stdin' $(net_dir)/servicenode1/katzenpost.toml
 
 .PHONY: clone-katzenpost
