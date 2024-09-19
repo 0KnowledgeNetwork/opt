@@ -469,13 +469,13 @@ func newState(s *Server) (*state, error) {
 			st.log.Errorf("ChainBridge command error: %v", err)
 			return
 		}
-		if chResponse.Error != "" {
+		if chResponse.Error != "" && chResponse.Error != chainbridge.Err_nodes_alreadyRegistered {
 			st.log.Errorf("ChainBridge response error: %v", chResponse.Error)
 			return
 		}
 
 		st.registeredLocalNodes[pk] = true
-		s.log.Noticef("Successfully registered node with Identifier '%s', Identity key hash '%x'", v.Identifier, pk)
+		s.log.Noticef("Local node registered with Identifier '%s', Identity key hash '%x'", v.Identifier, pk)
 	}
 
 	// Initialize the authorized peer tables.
