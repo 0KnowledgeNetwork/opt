@@ -22,7 +22,6 @@ import (
 	"github.com/katzenpost/hpqc/rand"
 
 	"github.com/katzenpost/katzenpost/client2"
-	"github.com/katzenpost/katzenpost/client2/common"
 	"github.com/katzenpost/katzenpost/client2/config"
 	"github.com/katzenpost/katzenpost/client2/thin"
 	sConstants "github.com/katzenpost/katzenpost/core/sphinx/constants"
@@ -30,7 +29,10 @@ import (
 	"github.com/0KnowledgeNetwork/opt/server_plugins/cbor_plugins/http_proxy"
 )
 
-var timeout = time.Second * 200
+var (
+	timeout          = time.Second * 200
+	ProxyHTTPService = "http_proxy"
+)
 
 func sendRequest(thin *thin.ThinClient, nodeId *[32]byte, recipientQueueID []byte, payload []byte) ([]byte, error) {
 	surbID := &[sConstants.SURBIDLength]byte{}
@@ -46,7 +48,6 @@ type Server struct {
 	log    *log.Logger
 	daemon *client2.Daemon
 	thin   *thin.ThinClient
-	target *common.ServiceDescriptor
 }
 
 func main() {
@@ -103,18 +104,18 @@ func main() {
 		panic(err)
 	}
 
-	ProxyHTTPService := "http_proxy"
-	desc, err := thin.GetService(ProxyHTTPService)
-	if err != nil {
-		panic(err)
-	}
+	/*
 
+		desc, err := thin.GetService(ProxyHTTPService)
+		if err != nil {
+			panic(err)
+		}
+	*/
 	// http server
 	server := &Server{
 		log:    mylog,
 		thin:   thin,
 		daemon: d,
-		target: desc,
 	}
 
 	if testProbe {
@@ -157,8 +158,12 @@ func (s *Server) Handler(w http.ResponseWriter, req *http.Request) {
 		panic(err)
 	}
 
-	nodeId := hash.Sum256(s.target.MixDescriptor.IdentityKey)
-	rawReply, err := sendRequest(s.thin, &nodeId, s.target.RecipientQueueID, blob)
+	target, err := s.thin.GetService(ProxyHTTPService)
+	if err != nil {
+		panic(err)
+	}
+	nodeId := hash.Sum256(target.MixDescriptor.IdentityKey)
+	rawReply, err := sendRequest(s.thin, &nodeId, target.RecipientQueueID, blob)
 	if err != nil {
 		s.log.Errorf("Failed to send message: %s", err)
 		http.Error(w, "custom 404", http.StatusNotFound)
@@ -214,8 +219,12 @@ func (s *Server) SendTestProbes(d time.Duration, testProbeCount int) {
 		if err != nil {
 			panic(err)
 		}
-		nodeId := hash.Sum256(s.target.MixDescriptor.IdentityKey)
-		_, err = sendRequest(s.thin, &nodeId, s.target.RecipientQueueID, blob)
+		target, err := s.thin.GetService(ProxyHTTPService)
+		if err != nil {
+			panic(err)
+		}
+		nodeId := hash.Sum256(target.MixDescriptor.IdentityKey)
+		_, err = sendRequest(s.thin, &nodeId, target.RecipientQueueID, blob)
 		elapsed := time.Since(t).Seconds()
 		if err != nil {
 			s.log.Errorf("Probe failed after %.2fs: %s", elapsed, err)
