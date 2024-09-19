@@ -108,22 +108,3 @@ start: clone-katzenpost $(docker_compose_yml) custom-config custom-binaries
 %: clone-katzenpost
 	@echo ">> Passing '$@' to $(katzenpost_dir)/docker/Makefile"
 	$(MAKE) -e -C $(katzenpost_dir)/docker $@
-
-########################################################################
-# FIXME: kpclientd belongs to katzenpost/docker/Makefile
-########################################################################
-$(net_dir)/kpclientd.$(distro): $(katzenpost_dir)/docker/$(distro)_base.stamp | $(net_name) $(cache_dir)
-	$(docker_run_sh) 'cd client2/cmd/kpclientd ; go build -trimpath -ldflags ${ldflags} && mv kpclientd /$(net_name)/kpclientd.$(distro)'
-
-.PHONY: kpclientd-start
-kpclientd-start: $(net_dir)/kpclientd.$(distro) $(net_dir)/running.stamp | $(cache_dir)
-	$(docker) run -d --network=host $(docker_args) $(mount_net_name) --name kpclientd katzenpost-$(distro)_base \
-		/$(net_name)/kpclientd.$(distro) -c /$(net_name)/client2/client.toml
-
-.PHONY: kpclientd-logs
-kpclientd-logs:
-	$(docker) logs --tail=100 kpclientd
-
-.PHONY: kpclientd-stop
-kpclientd-stop:
-	$(docker) stop kpclientd && $(docker) rm kpclientd
