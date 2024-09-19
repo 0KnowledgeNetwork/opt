@@ -30,6 +30,18 @@ import (
 	"github.com/0KnowledgeNetwork/opt/server_plugins/cbor_plugins/http_proxy"
 )
 
+var timeout = time.Second * 200
+
+func sendRequest(thin *thin.ThinClient, nodeId *[32]byte, recipientQueueID []byte, payload []byte) ([]byte, error) {
+	surbID := &[sConstants.SURBIDLength]byte{}
+	_, err := rand.Reader.Read(surbID[:])
+	if err != nil {
+		panic(err)
+	}
+	timeoutCtx, _ := context.WithTimeout(context.TODO(), timeout)
+	return thin.BlockingSendMessage(timeoutCtx, payload, nodeId, recipientQueueID)
+}
+
 type Server struct {
 	log    *log.Logger
 	daemon *client2.Daemon
@@ -145,27 +157,8 @@ func (s *Server) Handler(w http.ResponseWriter, req *http.Request) {
 		panic(err)
 	}
 
-	doc := s.thin.PKIDocument()
-	if doc == nil {
-		s.log.Errorf("Failed to retrieve PKI document")
-		return
-	}
-	var destinationIdHash [32]byte
-	if len(doc.ServiceNodes) > 0 {
-		node := doc.ServiceNodes[0] // Choose the first service node for simplicity
-		destinationIdHash = hash.Sum256(node.IdentityKey)
-	} else {
-		s.log.Errorf("No service nodes available in PKI document")
-		return
-	}
-	surbID := &[sConstants.SURBIDLength]byte{}
-	_, err = rand.Reader.Read(surbID[:])
-	if err != nil {
-		panic(err)
-	}
-	recipientQueueID := []byte("http_proxy")
-	timeoutCtx, _ := context.WithTimeout(context.TODO(), (time.Second * 200))
-	rawReply, err := s.thin.BlockingSendMessage(timeoutCtx, blob, &destinationIdHash, recipientQueueID)
+	nodeId := hash.Sum256(s.target.MixDescriptor.IdentityKey)
+	rawReply, err := sendRequest(s.thin, &nodeId, s.target.RecipientQueueID, blob)
 	if err != nil {
 		s.log.Errorf("Failed to send message: %s", err)
 		http.Error(w, "custom 404", http.StatusNotFound)
@@ -216,28 +209,13 @@ func (s *Server) SendTestProbes(d time.Duration, testProbeCount int) {
 
 		// Select a target service node and compute the DestinationIdHash
 
-		doc := s.thin.PKIDocument()
-		if doc == nil {
-			s.log.Errorf("Failed to retrieve PKI document")
-			return
-		}
-		var destinationIdHash [32]byte
-		if len(doc.ServiceNodes) > 0 {
-			node := doc.ServiceNodes[0] // Choose the first service node for simplicity
-			destinationIdHash = hash.Sum256(node.IdentityKey)
-		} else {
-			s.log.Errorf("No service nodes available in PKI document")
-			return
-		}
 		surbID := &[sConstants.SURBIDLength]byte{}
 		_, err := rand.Reader.Read(surbID[:])
 		if err != nil {
 			panic(err)
 		}
-		recipientQueueID := []byte("http_proxy")
-
-		timeoutCtx, _ := context.WithTimeout(context.TODO(), (time.Second * 200))
-		_, err = s.thin.BlockingSendMessage(timeoutCtx, blob, &destinationIdHash, recipientQueueID)
+		nodeId := hash.Sum256(s.target.MixDescriptor.IdentityKey)
+		_, err = sendRequest(s.thin, &nodeId, s.target.RecipientQueueID, blob)
 		elapsed := time.Since(t).Seconds()
 		if err != nil {
 			s.log.Errorf("Probe failed after %.2fs: %s", elapsed, err)
