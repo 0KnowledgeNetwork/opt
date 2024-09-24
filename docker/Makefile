@@ -24,7 +24,7 @@ docker_run_sh=$(docker) run ${docker_args} $(mount_net_name) $(mount_opt) --rm k
 
 katzenpost_dir=/tmp/katzenpost.opt
 # katzenpost_version=$(shell grep -E '^	github.com/katzenpost/katzenpost ' ../go.mod | awk '{print $$2}')
-katzenpost_version='v0.0.36_rc1'
+katzenpost_version='v0.0.36_rc2'
 net_dir=$(katzenpost_dir)/docker/$(net_name)
 
 # export variables to the environment for consumption by invoked Makefile(s)
