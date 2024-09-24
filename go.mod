@@ -3,13 +3,14 @@ module github.com/0KnowledgeNetwork/opt
 go 1.22.3
 
 require (
-	github.com/0KnowledgeNetwork/appchain-agent/clients/go v0.0.0-20240914010045-aa4ab8a6b16d
+	github.com/0KnowledgeNetwork/appchain-agent/clients/go v0.0.0-20240919044423-ca60aaadf6fa
 	github.com/BurntSushi/toml v1.4.0
 	github.com/carlmjohnson/versioninfo v0.22.5
 	github.com/charmbracelet/log v0.4.0
 	github.com/fxamacker/cbor/v2 v2.7.0
 	github.com/katzenpost/hpqc v0.0.45
 	github.com/katzenpost/katzenpost v0.0.38
+	github.com/quic-go/quic-go v0.47.0
 	gopkg.in/op/go-logging.v1 v1.0.0-20160211212156-b2cb9fa56473
 )
 
@@ -40,7 +41,6 @@ require (
 	github.com/oasisprotocol/deoxysii v0.0.0-20220228165953-2091330c22b7 // indirect
 	github.com/onsi/ginkgo/v2 v2.20.2 // indirect
 	github.com/quic-go/qpack v0.5.1 // indirect
-	github.com/quic-go/quic-go v0.47.0 // indirect
 	github.com/rfjakob/eme v1.1.2 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
