@@ -7,8 +7,8 @@ require (
 	github.com/carlmjohnson/versioninfo v0.22.5
 	github.com/charmbracelet/log v0.4.0
 	github.com/fxamacker/cbor/v2 v2.7.0
-	github.com/katzenpost/hpqc v0.0.44
-	github.com/katzenpost/katzenpost v0.0.36-0.20240923175916-ec6a2a38b02b
+	github.com/katzenpost/hpqc v0.0.45-0.20240924052816-b67c69f7d344
+	github.com/katzenpost/katzenpost v0.0.36
 	gopkg.in/op/go-logging.v1 v1.0.0-20160211212156-b2cb9fa56473
 )
 
