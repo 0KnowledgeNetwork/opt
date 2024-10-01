@@ -53,6 +53,7 @@ type Server struct {
 func main() {
 	var logLevel string
 	var listenAddr string
+	var listenAddrClient string
 	var configPath string
 	var testProbe bool
 	var testProbeCount int
@@ -60,6 +61,7 @@ func main() {
 	flag.StringVar(&configPath, "config", "", "file path of the client configuration TOML file")
 	flag.StringVar(&logLevel, "log_level", "DEBUG", "logging level could be set to: DEBUG, INFO, WARNING, ERROR, CRITICAL")
 	flag.StringVar(&listenAddr, "listen", "", "local socket to listen HTTP on")
+	flag.StringVar(&listenAddrClient, "listen_client", "", "local network address for the client daemon")
 	flag.BoolVar(&testProbe, "probe", false, "send test probes instead of handling requests")
 	flag.IntVar(&testProbeCount, "probe_count", 1, "number of test probes to send")
 	flag.Parse()
@@ -85,6 +87,10 @@ func main() {
 	cfg, err := config.LoadFile(configPath)
 	if err != nil {
 		panic(err)
+	}
+
+	if listenAddrClient != "" {
+		cfg.ListenAddress = listenAddrClient
 	}
 
 	d, err := client2.NewDaemon(cfg)
