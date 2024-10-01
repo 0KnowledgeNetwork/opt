@@ -34,14 +34,22 @@ var (
 	ProxyHTTPService = "http_proxy"
 )
 
-func sendRequest(thin *thin.ThinClient, nodeId *[32]byte, recipientQueueID []byte, payload []byte) ([]byte, error) {
+func sendRequest(thin *thin.ThinClient, payload []byte) ([]byte, error) {
 	surbID := &[sConstants.SURBIDLength]byte{}
 	_, err := rand.Reader.Read(surbID[:])
 	if err != nil {
 		panic(err)
 	}
+
+	// Select a target service node and compute the DestinationIdHash
+	target, err := thin.GetService(ProxyHTTPService)
+	if err != nil {
+		panic(err)
+	}
+	nodeId := hash.Sum256(target.MixDescriptor.IdentityKey)
+
 	timeoutCtx, _ := context.WithTimeout(context.TODO(), timeout)
-	return thin.BlockingSendMessage(timeoutCtx, payload, nodeId, recipientQueueID)
+	return thin.BlockingSendMessage(timeoutCtx, payload, &nodeId, target.RecipientQueueID)
 }
 
 type Server struct {
@@ -110,13 +118,6 @@ func main() {
 		panic(err)
 	}
 
-	/*
-
-		desc, err := thin.GetService(ProxyHTTPService)
-		if err != nil {
-			panic(err)
-		}
-	*/
 	// http server
 	server := &Server{
 		log:    mylog,
@@ -164,12 +165,7 @@ func (s *Server) Handler(w http.ResponseWriter, req *http.Request) {
 		panic(err)
 	}
 
-	target, err := s.thin.GetService(ProxyHTTPService)
-	if err != nil {
-		panic(err)
-	}
-	nodeId := hash.Sum256(target.MixDescriptor.IdentityKey)
-	rawReply, err := sendRequest(s.thin, &nodeId, target.RecipientQueueID, blob)
+	rawReply, err := sendRequest(s.thin, blob)
 	if err != nil {
 		s.log.Errorf("Failed to send message: %s", err)
 		http.Error(w, "custom 404", http.StatusNotFound)
@@ -218,19 +214,7 @@ func (s *Server) SendTestProbes(d time.Duration, testProbeCount int) {
 		packetsTransmitted++
 		t := time.Now()
 
-		// Select a target service node and compute the DestinationIdHash
-
-		surbID := &[sConstants.SURBIDLength]byte{}
-		_, err := rand.Reader.Read(surbID[:])
-		if err != nil {
-			panic(err)
-		}
-		target, err := s.thin.GetService(ProxyHTTPService)
-		if err != nil {
-			panic(err)
-		}
-		nodeId := hash.Sum256(target.MixDescriptor.IdentityKey)
-		_, err = sendRequest(s.thin, &nodeId, target.RecipientQueueID, blob)
+		_, err = sendRequest(s.thin, blob)
 		elapsed := time.Since(t).Seconds()
 		if err != nil {
 			s.log.Errorf("Probe failed after %.2fs: %s", elapsed, err)
