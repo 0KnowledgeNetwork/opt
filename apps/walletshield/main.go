@@ -235,13 +235,12 @@ func (s *Server) SendTestProbes(d time.Duration, testProbeCount int) {
 			if elapsed > rttMax {
 				rttMax = elapsed
 			}
-			s.log.Infof("Probe response took %.2fs", elapsed)
 		}
 
 		packetLoss := float64(packetsTransmitted-packetsReceived) / float64(packetsTransmitted) * 100
 		rttAvg := rttTotal / float64(packetsReceived)
-		s.log.Infof("Probe packet transmitted/received/loss = %d/%d/%.1f%%", packetsTransmitted, packetsReceived, packetLoss)
-		s.log.Infof("Probe rtt min/avg/max = %.2f/%.2f/%.2f s", rttMin, rttAvg, rttMax)
+		s.log.Infof("Probe packet transmitted/received/loss = %d/%d/%.1f%% | rtt min/avg/max = %.2f/%.2f/%.2f s",
+			packetsTransmitted, packetsReceived, packetLoss, rttMin, rttAvg, rttMax)
 
 		// probe indefinitely if testProbeCount is 0
 		if testProbeCount != 0 && packetsTransmitted >= testProbeCount {
