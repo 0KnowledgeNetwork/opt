@@ -63,10 +63,12 @@ func main() {
 	var listenAddr string
 	var listenAddrClient string
 	var configPath string
+	var delayStart int
 	var testProbe bool
 	var testProbeCount int
 
 	flag.StringVar(&configPath, "config", "", "file path of the client configuration TOML file")
+	flag.IntVar(&delayStart, "delay_start", 0, "max random seconds to delay start")
 	flag.StringVar(&logLevel, "log_level", "DEBUG", "logging level could be set to: DEBUG, INFO, WARNING, ERROR, CRITICAL")
 	flag.StringVar(&listenAddr, "listen", "", "local socket to listen HTTP on")
 	flag.StringVar(&listenAddrClient, "listen_client", "", "local network address for the client daemon")
@@ -90,6 +92,12 @@ func main() {
 		Prefix: "walletshield:",
 		Level:  level,
 	})
+
+	if delayStart > 0 {
+		d := rand.NewMath().Intn(delayStart)
+		mylog.Infof("Delaying start for %d seconds...", d)
+		time.Sleep(time.Duration(d) * time.Second)
+	}
 
 	// start client2 daemon
 	cfg, err := config.LoadFile(configPath)
