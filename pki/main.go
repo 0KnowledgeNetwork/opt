@@ -1,3 +1,4 @@
+// related: katzenpost:/authority/cmd/voting/main.go
 package main
 
 import (
