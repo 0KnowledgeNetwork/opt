@@ -2,7 +2,7 @@
   Identifier = "mix1"
   WireKEM = "xwing"
   PKISignatureScheme = "Ed25519"
-  Addresses = ["http://127.0.0.1:30011"]
+  Addresses = ["tcp://127.0.0.1:30011"]
   MetricsAddress = "127.0.0.1:30012"
   DataDir = "/appchain_mixnet/mix1"
   IsGatewayNode = false
@@ -22,7 +22,7 @@
       PKISignatureScheme = "Ed25519"
       LinkPublicKey = "-----BEGIN XWING PUBLIC KEY-----\n3ROCz8nO9LrIKTab12hxGiJulis3DNhCjSJbymrDo6ACzvNEQgWK2RzMeCVfalcZ\nNegVZiSs9vWQxECk2ApMsIeFVyfLoHF4FToMckJjuZQVPyIhC4ekhqpyRGhRFKwd\nQXQ8ymiLuaEpwoIOS9eSxfCOljyD//WKF5lFFkyRbhJWD1UWcpAjB9urVtOLBLWO\n4SzGp6VuLbcQn/UFb7dvzny+KHp+v0IZS+gAqXtd/tzCLuNIlDsCqtBlv5qnwAlB\nIJwRQGlhTBZFmbdIlAASs+mQuaIEAmtvnNx8AtihMSMUeUc6VIvENQhEjBu3BsIo\nr4OglrwUwSjGOzuWxqPKvlELmEknZYatxYs+PKoDwhOD0LC0YAijBxBLgMCBHbMk\nzOAv7CJKX5B426puWyZ3gfQ+HegbAVaBx6B/5sUFkCWADSOX4pUVsUUr2mQIpnwx\nhXECBEV5+gQbinclruc8zfJgPqOfXykvEJN9glS5OZumFmcZvxapsyMNQNGklnlT\nZOdx5FnMAQYEtLW3NMYQbeSuv/wKwfKO/BV2iiKPB4dcywNqTbKOLotCwnTEwURN\n/zIbjSsL/DSGShzHofJgq5VzkIAweBmKkORW47A/aYRKOjTFbxGnlOWoLZhiVLQ5\n+/OuiuC1b/RMFBNN3/i6bNuX9EVeXGWeFueiaoWcdyOsiUI/Iwyxy0pbGvxZJvQB\nSRQ60MUncrJJByUx44iu5qsyKFwJ9jDL/Meli1cTlZgmKmwlBqAwEydis2ZRVQUI\nzAs3uzTDBupPdJFZgSZgGOg1yYx3TfNvj0XP97EhSXIqJTxwgyNPYRprcVTARGBZ\n9yTFMQQNUjUHULUkTra7d4Bg1hRDdjTFqsYdkRzHq8GvLpQ0z7TOukI2BAo0RTqb\nLls5bVHAvOuQb9l4QptF7rye5hWHEGeHrtoZCHZRMJMZbqQ9J0cJ5YWh/3yr2uNn\n7SJ+iQKYlEtPCKWUF4sQY/u1a8otOqV59LcvoDt1sYg5KoNq3uJXRKlk+sRtCUu6\nyedGJ/NG1JfHEQZH6XCTfzJND3MErzNnGrkx9/l+msfDg6GLrFtCAaO4FJAGnccM\nrscSSoer3gxCojFd3EXLBdiQGxh6i0q65KtNDcNz0QEqDxA2Z5yBYKyyz5zJbVI0\n8py4S1ZpfywAmBmqYtfFNPMxkeY3I/gFqJejupO78aIsbGE3zqVO1JmLlpKkgKQk\nKcpLgZUR6JjMNtPIDklDQCgC7YMA0tpl0rxUxoHAK8gR0rUVRdOIDOYUZJt4n/ko\nFWxwJoeezJGME+VM4URLokhfstd3wrEI6KR3U/kGFouMbiqT6uQgNhkjujkzn4mc\njrBp6WJXhpCxvmMvCCgAqkAChoZ6uXYjigRKNghEX8SpOfFC7LF9giVoBVtxkdce\n2LZ+dVsAYwVkxIecAzcKrGG9JTvM6QxHVhorwRicr5pxn8h9M+N/silDpoKBk6JT\n0NgYixu4BTuZDhikJiB4chQyWYdfAIaJX/tM7sUBRJBfq/Ys4YFRfLjETuwuTfax\n6hpcvJZ5YVMpgECOcNkeQGZLE8QFH7X6ZfYFhrn3CtCqUWTCH/n8Ghy3tXKtRCe8\noo+G3kboH7mRnvorIpOlJw==\n-----END XWING PUBLIC KEY-----\n"
       WireKEMScheme = "xwing"
-      Addresses = ["http://127.0.0.1:30003"]
+      Addresses = ["tcp://127.0.0.1:30003"]
 
 [Management]
   Enable = false
