@@ -32,16 +32,24 @@ jobs:
       - name: run ping
         run: cd docker && sudo -E make run-ping
 
-      - name: Run Walletshield
+      - name: run walletshield test probe
+        run: cd docker && sudo -E make walletshield-probe
+
+      - name: Start walletshield
         run: |
-          cd docker && sudo -E make run-walletshield
+          cd docker
+          sudo -E make walletshield-start
+          sleep 10
+          sudo -E make walletshield-logs
       
-      - name: Test Walletshield
+      - name: Test walletshield
         run: ./tests/e2e/walletshield/test.sh
 
-      - name: Stop the Walletshield
+      - name: Stop walletshield
         run: |
-          cd docker && sudo -E make stop-walletshield
+          cd docker
+          sudo -E make walletshield-logs
+          sudo -E make walletshield-stop
 
       - name: Stop the mixnet
         run: |
