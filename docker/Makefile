@@ -1,3 +1,4 @@
+tmp?=/tmp
 warped?=true
 mixes=3
 gateways=1
@@ -24,7 +25,7 @@ mount_net_name=-v $(katzenpost_dir)/docker/$(net_name):/$(net_name)
 mount_opt=-v $(shell readlink -f ..):/go/opt
 docker_run_sh=$(docker) run ${docker_args} $(mount_net_name) $(mount_opt) --rm katzenpost-$(distro)_base $(sh) -c
 
-katzenpost_dir=/tmp/katzenpost.opt
+katzenpost_dir=${tmp}/katzenpost.opt
 katzenpost_version=$(shell grep -E '^	github.com/katzenpost/katzenpost ' ../go.mod | awk '{print $$2}')
 net_dir=$(katzenpost_dir)/docker/$(net_name)
 
