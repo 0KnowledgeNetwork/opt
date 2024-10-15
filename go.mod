@@ -12,6 +12,7 @@ require (
 	github.com/katzenpost/katzenpost v0.0.38
 	github.com/quic-go/quic-go v0.47.0
 	gopkg.in/op/go-logging.v1 v1.0.0-20160211212156-b2cb9fa56473
+	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (
