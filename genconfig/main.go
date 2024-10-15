@@ -14,6 +14,7 @@ import (
 	"sort"
 
 	"github.com/BurntSushi/toml"
+	"gopkg.in/yaml.v3"
 
 	"github.com/katzenpost/hpqc/hash"
 	"github.com/katzenpost/hpqc/kem"
@@ -30,16 +31,13 @@ import (
 	cpki "github.com/katzenpost/katzenpost/core/pki"
 	"github.com/katzenpost/katzenpost/core/sphinx/geo"
 	sConfig "github.com/katzenpost/katzenpost/server/config"
+
+	zknConfig "github.com/0KnowledgeNetwork/opt/genconfig/config"
 )
 
 const (
-	basePort       = 30000
-	bindAddr       = "127.0.0.1"
-	nrLayers       = 3
-	nrNodes        = 6
-	nrGateways     = 1
-	nrServiceNodes = 1
-	nrAuthorities  = 3
+	basePort = 30000
+	bindAddr = "127.0.0.1"
 )
 
 type katzenpost struct {
@@ -159,7 +157,7 @@ func (s *katzenpost) genClient2Cfg() error {
 		gateways = append(gateways, gateway)
 	}
 	if len(gateways) == 0 {
-		panic("wtf 0 providers")
+		log.Print("Note: 0 gateways")
 	}
 	log.Print("after gathering providers")
 	cfg.PinnedGateways = &cConfig2.Gateways{
@@ -173,7 +171,6 @@ func (s *katzenpost) genClient2Cfg() error {
 		return err
 	}
 	log.Print("after save config")
-	log.Print("genClient2Cfg end")
 	return nil
 }
 
@@ -378,7 +375,6 @@ func (s *katzenpost) genNodeConfig(isGateway, isServiceNode bool, isVoting bool)
 	s.nodeConfigs = append(s.nodeConfigs, cfg)
 	_ = cfgIdKey(cfg, s.outDir)
 	_ = cfgLinkKey(cfg, s.outDir, s.wireKEMScheme)
-	log.Print("genNodeConfig end")
 	return cfg.FixupAndValidate()
 }
 
@@ -464,47 +460,45 @@ func (s *katzenpost) genAuthorizedNodes() ([]*vConfig.Node, []*vConfig.Node, []*
 
 func main() {
 	var err error
-	nrLayers := flag.Int("L", nrLayers, "Number of layers.")
-	nrNodes := flag.Int("n", nrNodes, "Number of mixes.")
 
-	nrGateways := flag.Int("gateways", nrGateways, "Number of gateways.")
-	nrServiceNodes := flag.Int("serviceNodes", nrServiceNodes, "Number of providers.")
+	// tmp hack: these are here to minimize other changes to the original...
+	nrLayers := new(int)
+	nrNodes := new(int)
+	nrGateways := new(int)
+	nrServiceNodes := new(int)
+	voting := new(bool)
+	nrVoting := new(int)
+	omitTopology := new(bool)
 
-	voting := flag.Bool("v", false, "Generate voting configuration")
-	nrVoting := flag.Int("nv", nrAuthorities, "Generate voting configuration")
-	baseDir := flag.String("b", "", "Path to use as baseDir option")
-	basePort := flag.Int("P", basePort, "First port number to use")
-	bindAddr := flag.String("a", bindAddr, "Address to bind to")
-	outDir := flag.String("o", "", "Path to write files to")
-	binSuffix := flag.String("S", "", "suffix for binaries in docker-compose.yml")
-	logLevel := flag.String("log_level", "DEBUG", "logging level could be set to: DEBUG, INFO, NOTICE, WARNING, ERROR, CRITICAL")
-	omitTopology := flag.Bool("D", false, "Dynamic topology (omit fixed topology definition)")
-	wirekem := flag.String("wirekem", "", "Name of the KEM Scheme to be used with wire protocol")
-	kem := flag.String("kem", "", "Name of the KEM Scheme to be used with Sphinx")
-	nike := flag.String("nike", "x25519", "Name of the NIKE Scheme to be used with Sphinx")
-	ratchetNike := flag.String("ratchetNike", "CTIDH512-X25519", "Name of the NIKE Scheme to be used with the doubleratchet")
-	UserForwardPayloadLength := flag.Int("UserForwardPayloadLength", 2000, "UserForwardPayloadLength")
-	pkiSignatureScheme := flag.String("pkiScheme", "Ed25519", "PKI Signature Scheme to be used")
-	noDecoy := flag.Bool("noDecoy", true, "Disable decoy traffic for the client")
-	noMixDecoy := flag.Bool("noMixDecoy", true, "Disable decoy traffic for the mixes")
-	dialTimeout := flag.Int("dialTimeout", 0, "Session dial timeout")
-	maxPKIDelay := flag.Int("maxPKIDelay", 0, "Initial maximum PKI retrieval delay")
-	pollingIntvl := flag.Int("pollingIntvl", 0, "Polling interval")
-
-	sr := flag.Uint64("sr", 0, "Sendrate limit")
-	mu := flag.Float64("mu", 0.005, "Inverse of mean of per hop delay.")
-	muMax := flag.Uint64("muMax", 1000, "Maximum delay for Mu.")
-	lP := flag.Float64("lP", 0.001, "Inverse of mean for client send rate LambdaP")
-	lPMax := flag.Uint64("lPMax", 1000, "Maximum delay for LambdaP.")
-	lL := flag.Float64("lL", 0.0005, "Inverse of mean of loop decoy send rate LambdaL")
-	lLMax := flag.Uint64("lLMax", 1000, "Maximum delay for LambdaL")
-	lD := flag.Float64("lD", 0.0005, "Inverse of mean of drop decoy send rate LambdaD")
-	lDMax := flag.Uint64("lDMax", 3000, "Maximum delay for LambaD")
-	lM := flag.Float64("lM", 0.2, "Inverse of mean of mix decoy send rate")
-	lMMax := flag.Uint64("lMMax", 100, "Maximum delay for LambdaM")
-	lGMax := flag.Uint64("lGMax", 100, "Maximum delay for LambdaM")
+	inputNetworkInfo := flag.String("input", "network.yml", "Path to network info file")
+	cfgType := flag.String("type", "", "Type of config to generate: mix, gateway, servicenode, client1, client")
+	baseDir := flag.String("dir-base", "", "Path to use as installation directory")
+	basePort := flag.Int("port", basePort, "First port number to use")
+	bindAddr := flag.String("address", bindAddr, "Address to bind to")
+	outDir := flag.String("dir-out", "", "Path to write files to")
+	logLevel := flag.String("log-level", "DEBUG", "logging level could be set to: DEBUG, INFO, NOTICE, WARNING, ERROR, CRITICAL")
 
 	flag.Parse()
+
+	// Read the network info file
+	data, err := os.ReadFile(*inputNetworkInfo)
+	if err != nil {
+		log.Fatalf("Error reading file: %v\n", err)
+	}
+	var networkInfo zknConfig.NetworkInfo
+	err = yaml.Unmarshal(data, &networkInfo)
+	if err != nil {
+		log.Fatalf("Error decoding YAML: %v\n", err)
+	}
+
+	*nrLayers = networkInfo.KpMiscTopologyLayers
+	*omitTopology = true                                          // "Dynamic topology (omit fixed topology definition)"
+	wirekem := &networkInfo.KpConfigWirekem                       // "Name of the KEM Scheme to be used with wire protocol"
+	kem := &networkInfo.KpConfigKem                               // "Name of the KEM Scheme to be used with Sphinx"
+	nike := &networkInfo.KpConfigNike                             // "Name of the NIKE Scheme to be used with Sphinx"
+	ratchetNike := &networkInfo.KpConfigRatchetNike               // "Name of the NIKE Scheme to be used with the doubleratchet"
+	pkiSignatureScheme := &networkInfo.KpConfigPkiSignatureScheme // "PKI Signature Scheme to be used"
+	UserForwardPayloadLength := &networkInfo.KpConfigUserForwardPayloadLength
 
 	if *wirekem == "" {
 		log.Fatal("wire KEM must be set")
@@ -521,19 +515,44 @@ func main() {
 		log.Fatal("ratchetNike must be set")
 	}
 
+	if *pkiSignatureScheme == "" {
+		log.Fatal("pkiSignatureScheme must be set")
+	}
+
+	// generate config for a single node of the given type, each with its own authority
+	*nrNodes = 0
+	*nrGateways = 0
+	*nrServiceNodes = 0
+	*nrVoting = 1
+	*voting = true
+	switch *cfgType {
+	case "":
+		log.Fatal("type must be set")
+	case "mix":
+		*nrNodes = 1
+	case "gateway":
+		*nrGateways = 1
+	case "servicenode":
+		*nrServiceNodes = 1
+	case "client", "client1":
+		*voting = false
+	default:
+		log.Fatal("invalid type")
+	}
+
 	parameters := &vConfig.Parameters{
-		SendRatePerMinute: *sr,
-		Mu:                *mu,
-		MuMaxDelay:        *muMax,
-		LambdaP:           *lP,
-		LambdaPMaxDelay:   *lPMax,
-		LambdaL:           *lL,
-		LambdaLMaxDelay:   *lLMax,
-		LambdaD:           *lD,
-		LambdaDMaxDelay:   *lDMax,
-		LambdaM:           *lM,
-		LambdaMMaxDelay:   *lMMax,
-		LambdaGMaxDelay:   *lGMax,
+		SendRatePerMinute: networkInfo.KpConfigSendRatePerMinute,
+		Mu:                networkInfo.KpConfigMu,
+		MuMaxDelay:        networkInfo.KpConfigMuMaxDelay,
+		LambdaP:           networkInfo.KpConfigLambdaP,
+		LambdaPMaxDelay:   networkInfo.KpConfigLambdaPMaxDelay,
+		LambdaL:           networkInfo.KpConfigLambdaL,
+		LambdaLMaxDelay:   networkInfo.KpConfigLambdaLMaxDelay,
+		LambdaD:           networkInfo.KpConfigLambdaD,
+		LambdaDMaxDelay:   networkInfo.KpConfigLambdaDMaxDelay,
+		LambdaM:           networkInfo.KpConfigLambdaM,
+		LambdaMMaxDelay:   networkInfo.KpConfigLambdaMMaxDelay,
+		LambdaGMaxDelay:   networkInfo.KpConfigLambdaGMaxDelay,
 	}
 
 	s := &katzenpost{}
@@ -547,18 +566,18 @@ func main() {
 
 	s.baseDir = *baseDir
 	s.outDir = *outDir
-	s.binSuffix = *binSuffix
+	s.binSuffix = ""
 	s.basePort = uint16(*basePort)
 	s.lastPort = s.basePort + 1
 	s.bindAddr = *bindAddr
 	s.logLevel = *logLevel
 	s.debugConfig = &cConfig.Debug{
-		DisableDecoyTraffic:         *noDecoy,
-		SessionDialTimeout:          *dialTimeout,
-		InitialMaxPKIRetrievalDelay: *maxPKIDelay,
-		PollingInterval:             *pollingIntvl,
+		DisableDecoyTraffic:         networkInfo.KpClientDebugDisableDecoyTraffic,
+		SessionDialTimeout:          networkInfo.KpClientDebugSessionDialTimeout,
+		InitialMaxPKIRetrievalDelay: networkInfo.KpClientDebugInitialMaxPKIDelay,
+		PollingInterval:             networkInfo.KpClientDebugPollingInterval,
 	}
-	s.noMixDecoy = *noMixDecoy
+	s.noMixDecoy = !networkInfo.KpDebugSendDecoyTraffic
 
 	nrHops := *nrLayers + 2
 
@@ -660,14 +679,18 @@ func main() {
 		}
 	}
 
-	err = s.genClientCfg()
-	if err != nil {
-		log.Fatalf("%s", err)
+	if *cfgType == "client1" {
+		err = s.genClientCfg()
+		if err != nil {
+			log.Fatalf("%s", err)
+		}
 	}
 
-	err = s.genClient2Cfg() // depends on genClientCfg()
-	if err != nil {
-		log.Fatalf("%s", err)
+	if *cfgType == "client" {
+		err = s.genClient2Cfg()
+		if err != nil {
+			log.Fatalf("%s", err)
+		}
 	}
 }
 
