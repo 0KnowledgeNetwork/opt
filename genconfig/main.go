@@ -36,8 +36,9 @@ import (
 )
 
 const (
-	basePort = 30000
-	bindAddr = "127.0.0.1"
+	addr      = "127.0.0.1"
+	basePort  = 30000
+	transport = "tcp"
 )
 
 type katzenpost struct {
@@ -58,7 +59,8 @@ type katzenpost struct {
 	nodeConfigs    []*sConfig.Config
 	basePort       uint16
 	lastPort       uint16
-	bindAddr       string
+	addr           string
+	addrBind       string
 	nodeIdx        int
 	clientIdx      int
 	gatewayIdx     int
@@ -67,6 +69,7 @@ type katzenpost struct {
 	hasProxy       bool
 	noMixDecoy     bool
 	debugConfig    *cConfig.Debug
+	transport      string
 }
 
 type AuthById []*vConfig.Authority
@@ -238,15 +241,11 @@ func (s *katzenpost) genNodeConfig(isGateway, isServiceNode bool, isVoting bool)
 	cfg.Server.WireKEM = s.wireKEMScheme
 	cfg.Server.PKISignatureScheme = s.pkiSignatureScheme.Name()
 	cfg.Server.Identifier = n
-	if isGateway {
-		cfg.Server.Addresses = []string{fmt.Sprintf("tcp://127.0.0.1:%d", s.lastPort), fmt.Sprintf("tcp://127.0.0.1:%d", s.lastPort+1),
-			fmt.Sprintf("onion://thisisjustatestoniontoverifythatconfigandpkiworkproperly.onion:4242")}
-		cfg.Server.BindAddresses = []string{fmt.Sprintf("tcp://127.0.0.1:%d", s.lastPort), fmt.Sprintf("tcp://127.0.0.1:%d", s.lastPort+1)}
-		s.lastPort += 2
-	} else {
-		cfg.Server.Addresses = []string{fmt.Sprintf("tcp://127.0.0.1:%d", s.lastPort)}
-		s.lastPort += 1
+	cfg.Server.Addresses = []string{fmt.Sprintf("%s://%s:%d", s.transport, s.addr, s.lastPort)}
+	if s.addrBind != "" {
+		cfg.Server.BindAddresses = []string{fmt.Sprintf("%s://%s:%d", s.transport, s.addrBind, s.lastPort)}
 	}
+	s.lastPort += 1
 	cfg.Server.DataDir = filepath.Join(s.baseDir, n)
 
 	os.Mkdir(filepath.Join(s.outDir, cfg.Server.Identifier), 0700)
@@ -391,7 +390,7 @@ func (s *katzenpost) genVotingAuthoritiesCfg(numAuthorities int, parameters *vCo
 			WireKEMScheme:      s.wireKEMScheme,
 			PKISignatureScheme: s.pkiSignatureScheme.Name(),
 			Identifier:         fmt.Sprintf("auth%d", i),
-			Addresses:          []string{fmt.Sprintf("tcp://127.0.0.1:%d", s.lastPort)},
+			Addresses:          []string{fmt.Sprintf("%s://127.0.0.1:%d", s.transport, s.lastPort)},
 			DataDir:            filepath.Join(s.baseDir, fmt.Sprintf("auth%d", i)),
 		}
 		os.Mkdir(filepath.Join(s.outDir, cfg.Server.Identifier), 0700)
@@ -474,9 +473,11 @@ func main() {
 	cfgType := flag.String("type", "", "Type of config to generate: mix, gateway, servicenode, client1, client")
 	baseDir := flag.String("dir-base", "", "Absolute path as installation directory in config files (default -dir-out)")
 	basePort := flag.Int("port", basePort, "First port number to use")
-	bindAddr := flag.String("address", bindAddr, "Address to bind to")
+	addr := flag.String("address", addr, "Address to publish (and bind to if -address-bind not set)")
+	addrBind := flag.String("address-bind", "", "Address to bind to")
 	outDir := flag.String("dir-out", "", "Path to write files to")
 	logLevel := flag.String("log-level", "DEBUG", "logging level could be set to: DEBUG, INFO, NOTICE, WARNING, ERROR, CRITICAL")
+	transport := flag.String("transport", transport, "Transport protocol: tcp, quic")
 
 	if *baseDir == "" {
 		baseDir = outDir
@@ -573,7 +574,8 @@ func main() {
 	s.binSuffix = ""
 	s.basePort = uint16(*basePort)
 	s.lastPort = s.basePort + 1
-	s.bindAddr = *bindAddr
+	s.addr = *addr
+	s.addrBind = *addrBind
 	s.logLevel = *logLevel
 	s.debugConfig = &cConfig.Debug{
 		DisableDecoyTraffic:         networkInfo.KpClientDebugDisableDecoyTraffic,
@@ -582,6 +584,7 @@ func main() {
 		PollingInterval:             networkInfo.KpClientDebugPollingInterval,
 	}
 	s.noMixDecoy = !networkInfo.KpDebugSendDecoyTraffic
+	s.transport = *transport
 
 	nrHops := *nrLayers + 2
 
