@@ -39,6 +39,7 @@ const (
 	addr      = "127.0.0.1"
 	basePort  = 30000
 	transport = "tcp"
+	metrics   = "0.0.0.0:9100"
 )
 
 type katzenpost struct {
@@ -70,6 +71,7 @@ type katzenpost struct {
 	noMixDecoy     bool
 	debugConfig    *cConfig.Debug
 	transport      string
+	metrics        string
 }
 
 type AuthById []*vConfig.Authority
@@ -261,8 +263,7 @@ func (s *katzenpost) genNodeConfig(isGateway, isServiceNode bool, isVoting bool)
 		cfg.Management.Enable = true
 	}
 	// Enable Metrics endpoint
-	cfg.Server.MetricsAddress = fmt.Sprintf("127.0.0.1:%d", s.lastPort)
-	s.lastPort += 1
+	cfg.Server.MetricsAddress = s.metrics
 
 	// Debug section.
 	cfg.Debug = new(sConfig.Debug)
@@ -478,6 +479,7 @@ func main() {
 	outDir := flag.String("dir-out", "", "Path to write files to")
 	logLevel := flag.String("log-level", "DEBUG", "logging level could be set to: DEBUG, INFO, NOTICE, WARNING, ERROR, CRITICAL")
 	transport := flag.String("transport", transport, "Transport protocol: tcp, quic")
+	metrics := flag.String("metrics", metrics, "Metrics endpoint")
 
 	if *baseDir == "" {
 		baseDir = outDir
@@ -585,6 +587,7 @@ func main() {
 	}
 	s.noMixDecoy = !networkInfo.KpDebugSendDecoyTraffic
 	s.transport = *transport
+	s.metrics = *metrics
 
 	nrHops := *nrLayers + 2
 
