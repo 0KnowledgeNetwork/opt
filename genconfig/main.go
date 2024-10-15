@@ -470,7 +470,7 @@ func main() {
 	omitTopology := new(bool)
 
 	inputNetworkInfo := flag.String("input", "network.yml", "Path to network info file")
-	cfgType := flag.String("type", "", "Type of config to generate: mix, gateway, servicenode, client1, client")
+	cfgType := flag.String("type", "", "Type of config to generate: mix, gateway, servicenode, client1, client2")
 	baseDir := flag.String("dir-base", "", "Absolute path as installation directory in config files (default -dir-out)")
 	basePort := flag.Int("port", basePort, "First port number to use")
 	addr := flag.String("address", addr, "Address to publish (and bind to if -address-bind not set)")
@@ -540,7 +540,7 @@ func main() {
 		*nrGateways = 1
 	case "servicenode":
 		*nrServiceNodes = 1
-	case "client", "client1":
+	case "client1", "client2":
 		*voting = false
 	default:
 		log.Fatal("invalid type")
@@ -695,7 +695,7 @@ func main() {
 		}
 	}
 
-	if *cfgType == "client" {
+	if *cfgType == "client2" {
 		err = s.genClient2Cfg()
 		if err != nil {
 			log.Fatalf("%s", err)
