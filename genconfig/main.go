@@ -472,11 +472,15 @@ func main() {
 
 	inputNetworkInfo := flag.String("input", "network.yml", "Path to network info file")
 	cfgType := flag.String("type", "", "Type of config to generate: mix, gateway, servicenode, client1, client")
-	baseDir := flag.String("dir-base", "", "Path to use as installation directory")
+	baseDir := flag.String("dir-base", "", "Absolute path as installation directory in config files (default -dir-out)")
 	basePort := flag.Int("port", basePort, "First port number to use")
 	bindAddr := flag.String("address", bindAddr, "Address to bind to")
 	outDir := flag.String("dir-out", "", "Path to write files to")
 	logLevel := flag.String("log-level", "DEBUG", "logging level could be set to: DEBUG, INFO, NOTICE, WARNING, ERROR, CRITICAL")
+
+	if *baseDir == "" {
+		baseDir = outDir
+	}
 
 	flag.Parse()
 
