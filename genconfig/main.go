@@ -243,11 +243,10 @@ func (s *katzenpost) genNodeConfig(isGateway, isServiceNode bool, isVoting bool)
 	cfg.Server.WireKEM = s.wireKEMScheme
 	cfg.Server.PKISignatureScheme = s.pkiSignatureScheme.Name()
 	cfg.Server.Identifier = n
-	cfg.Server.Addresses = []string{fmt.Sprintf("%s://%s:%d", s.transport, s.addr, s.lastPort)}
+	cfg.Server.Addresses = []string{fmt.Sprintf("%s://%s:%d", s.transport, s.addr, s.basePort)}
 	if s.addrBind != "" {
-		cfg.Server.BindAddresses = []string{fmt.Sprintf("%s://%s:%d", s.transport, s.addrBind, s.lastPort)}
+		cfg.Server.BindAddresses = []string{fmt.Sprintf("%s://%s:%d", s.transport, s.addrBind, s.basePort)}
 	}
-	s.lastPort += 1
 	cfg.Server.DataDir = filepath.Join(s.baseDir, n)
 
 	os.Mkdir(filepath.Join(s.outDir, cfg.Server.Identifier), 0700)
