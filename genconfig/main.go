@@ -68,10 +68,12 @@ type katzenpost struct {
 	serviceNodeIdx int
 	hasPanda       bool
 	hasProxy       bool
-	noMixDecoy     bool
-	debugConfig    *cConfig.Debug
 	transport      string
 	metrics        string
+
+	debugConfigClient1 *cConfig.Debug
+	debugConfigClient2 *cConfig2.Debug
+	debugConfigServer  *sConfig.Debug
 }
 
 type AuthById []*vConfig.Authority
@@ -139,7 +141,7 @@ func (s *katzenpost) genClient2Cfg() error {
 	cfg.VotingAuthority = &cConfig2.VotingAuthority{Peers: peers}
 
 	// Debug section
-	cfg.Debug = &cConfig2.Debug{DisableDecoyTraffic: s.debugConfig.DisableDecoyTraffic}
+	cfg.Debug = s.debugConfigClient2
 
 	log.Print("before gathering providers")
 	gateways := make([]*cConfig2.Gateway, 0)
@@ -208,7 +210,7 @@ func (s *katzenpost) genClientCfg() error {
 	cfg.VotingAuthority = &cConfig.VotingAuthority{Peers: peers}
 
 	// Debug section
-	cfg.Debug = s.debugConfig
+	cfg.Debug = s.debugConfigClient1
 	err := saveCfg(cfg, s.outDir)
 	if err != nil {
 		return err
@@ -265,8 +267,7 @@ func (s *katzenpost) genNodeConfig(isGateway, isServiceNode bool, isVoting bool)
 	cfg.Server.MetricsAddress = s.metrics
 
 	// Debug section.
-	cfg.Debug = new(sConfig.Debug)
-	cfg.Debug.SendDecoyTraffic = !s.noMixDecoy
+	cfg.Debug = s.debugConfigServer
 
 	// PKI section.
 	if isVoting {
@@ -578,15 +579,43 @@ func main() {
 	s.addr = *addr
 	s.addrBind = *addrBind
 	s.logLevel = *logLevel
-	s.debugConfig = &cConfig.Debug{
+	s.transport = *transport
+	s.metrics = *metrics
+	s.debugConfigClient1 = &cConfig.Debug{
 		DisableDecoyTraffic:         networkInfo.KpClientDebugDisableDecoyTraffic,
 		SessionDialTimeout:          networkInfo.KpClientDebugSessionDialTimeout,
 		InitialMaxPKIRetrievalDelay: networkInfo.KpClientDebugInitialMaxPKIDelay,
 		PollingInterval:             networkInfo.KpClientDebugPollingInterval,
 	}
-	s.noMixDecoy = !networkInfo.KpDebugSendDecoyTraffic
-	s.transport = *transport
-	s.metrics = *metrics
+	s.debugConfigClient2 = &cConfig2.Debug{
+		DisableDecoyTraffic:         networkInfo.KpClientDebugDisableDecoyTraffic,
+		SessionDialTimeout:          networkInfo.KpClientDebugSessionDialTimeout,
+		InitialMaxPKIRetrievalDelay: networkInfo.KpClientDebugInitialMaxPKIDelay,
+		PollingInterval:             networkInfo.KpClientDebugPollingInterval,
+		EnableTimeSync:              networkInfo.KpClientDebugEnableTimeSync,
+	}
+	s.debugConfigServer = &sConfig.Debug{
+		ConnectTimeout:               networkInfo.KpDebugConnectTimeout,
+		DecoySlack:                   networkInfo.KpDebugDecoySlack,
+		DisableRateLimit:             networkInfo.KpDebugDisableRateLimit,
+		GatewayDelay:                 networkInfo.KpDebugGatewayDelay,
+		GenerateOnly:                 networkInfo.KpDebugGenerateOnly,
+		HandshakeTimeout:             networkInfo.KpDebugHandshakeTimeout,
+		KaetzchenDelay:               networkInfo.KpDebugKaetzchenDelay,
+		NumGatewayWorkers:            networkInfo.KpDebugNumGatewayWorkers,
+		NumKaetzchenWorkers:          networkInfo.KpDebugNumKaetzchenWorkers,
+		NumServiceWorkers:            networkInfo.KpDebugNumServiceWorkers,
+		NumSphinxWorkers:             networkInfo.KpDebugNumSphinxWorkers,
+		ReauthInterval:               networkInfo.KpDebugReauthInterval,
+		SchedulerExternalMemoryQueue: networkInfo.KpDebugSchedulerExternalMemoryQueue,
+		SchedulerMaxBurst:            networkInfo.KpDebugSchedulerMaxBurst,
+		SchedulerQueueSize:           networkInfo.KpDebugSchedulerQueueSize,
+		SchedulerSlack:               networkInfo.KpDebugSchedulerSlack,
+		SendDecoyTraffic:             networkInfo.KpDebugSendDecoyTraffic,
+		SendSlack:                    networkInfo.KpDebugSendSlack,
+		ServiceDelay:                 networkInfo.KpDebugServiceDelay,
+		UnwrapDelay:                  networkInfo.KpDebugUnwrapDelay,
+	}
 
 	nrHops := *nrLayers + 2
 
