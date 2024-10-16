@@ -11,6 +11,10 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"regexp"
+	"strconv"
+	"strings"
+	"time"
 
 	"github.com/fxamacker/cbor/v2"
 	"gopkg.in/op/go-logging.v1"
@@ -151,7 +155,15 @@ func (s *proxyRequestHandler) OnCommand(cmd cborplugin.Command) error {
 			return s.sendError(r.ID, r.SURB, fmt.Sprintf("validateRequestURL failed: %s", err.Error()))
 		}
 
-		if request.URL.Path == "/_/probe" {
+		if match, _ := regexp.MatchString("^/_/probe.*", request.URL.Path); match {
+			segments := strings.Split(request.URL.Path, "/")
+			if len(segments) >= 4 {
+				responseDelay, err := strconv.Atoi(segments[3])
+				if err == nil && responseDelay > 0 {
+					s.log.Infof("probe: delaying response for %ds", responseDelay)
+					time.Sleep(time.Duration(responseDelay) * time.Second)
+				}
+			}
 			go s.write(&cborplugin.Response{ID: r.ID, SURB: r.SURB, Payload: nil})
 			return nil
 		}
