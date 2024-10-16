@@ -30,7 +30,7 @@ import (
 )
 
 var (
-	timeout          = time.Second * 200
+	timeout          = time.Second * 45
 	ProxyHTTPService = "http_proxy"
 )
 
