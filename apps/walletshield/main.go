@@ -239,6 +239,9 @@ func (s *Server) SendTestProbes(d time.Duration, testProbeCount int) {
 
 		packetLoss := float64(packetsTransmitted-packetsReceived) / float64(packetsTransmitted) * 100
 		rttAvg := rttTotal / float64(packetsReceived)
+		if packetsReceived == 0 {
+			rttMin = math.NaN()
+		}
 		s.log.Infof("Probe packet transmitted/received/loss = %d/%d/%.1f%% | rtt min/avg/max = %.2f/%.2f/%.2f s",
 			packetsTransmitted, packetsReceived, packetLoss, rttMin, rttAvg, rttMax)
 
