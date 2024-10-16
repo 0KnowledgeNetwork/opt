@@ -1,8 +1,10 @@
 warped?=true
 ldflags="-X github.com/katzenpost/katzenpost/core/epochtime.WarpedEpoch=${warped}"
 
+.PHONY: all
 all:
-	sh -c 'go build -ldflags ${ldflags};'
+	go build -trimpath -ldflags ${ldflags}
 
+.PHONY: clean
 clean:
-	rm app-walletshield
+	rm -f walletshield

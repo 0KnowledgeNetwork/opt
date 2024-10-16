@@ -30,7 +30,7 @@ import (
 )
 
 var (
-	timeout          = time.Second * 200
+	timeout          = time.Second * 45
 	ProxyHTTPService = "http_proxy"
 )
 
@@ -66,6 +66,7 @@ func main() {
 	var delayStart int
 	var testProbe bool
 	var testProbeCount int
+	var testProbeResponseDelay int
 
 	flag.StringVar(&configPath, "config", "", "file path of the client configuration TOML file")
 	flag.IntVar(&delayStart, "delay_start", 0, "max random seconds to delay start")
@@ -74,6 +75,7 @@ func main() {
 	flag.StringVar(&listenAddrClient, "listen_client", "", "local network address for the client daemon")
 	flag.BoolVar(&testProbe, "probe", false, "send test probes instead of handling requests")
 	flag.IntVar(&testProbeCount, "probe_count", 1, "number of test probes to send")
+	flag.IntVar(&testProbeResponseDelay, "probe_response_delay", 0, "test probe response deplay")
 	flag.Parse()
 
 	if listenAddr == "" && !testProbe {
@@ -134,7 +136,7 @@ func main() {
 	}
 
 	if testProbe {
-		server.SendTestProbes(10*time.Second, testProbeCount)
+		server.SendTestProbes(10*time.Second, testProbeCount, testProbeResponseDelay)
 	} else {
 		http.HandleFunc("/", server.Handler)
 		err := http.ListenAndServe(listenAddr, nil)
@@ -203,8 +205,9 @@ func (s *Server) Handler(w http.ResponseWriter, req *http.Request) {
 	fmt.Fprintf(w, string(response.Payload))
 }
 
-func (s *Server) SendTestProbes(d time.Duration, testProbeCount int) {
-	req, err := http.NewRequest("GET", "http://nowhere/_/probe", nil)
+func (s *Server) SendTestProbes(d time.Duration, testProbeCount int, testProbeResponseDelay int) {
+	url := fmt.Sprintf("http://nowhere/_/probe/%d", testProbeResponseDelay)
+	req, err := http.NewRequest("GET", url, nil)
 	buf := new(bytes.Buffer)
 	req.Write(buf)
 	request := new(http_proxy.Request)
@@ -239,6 +242,9 @@ func (s *Server) SendTestProbes(d time.Duration, testProbeCount int) {
 
 		packetLoss := float64(packetsTransmitted-packetsReceived) / float64(packetsTransmitted) * 100
 		rttAvg := rttTotal / float64(packetsReceived)
+		if packetsReceived == 0 {
+			rttMin = math.NaN()
+		}
 		s.log.Infof("Probe packet transmitted/received/loss = %d/%d/%.1f%% | rtt min/avg/max = %.2f/%.2f/%.2f s",
 			packetsTransmitted, packetsReceived, packetLoss, rttMin, rttAvg, rttMax)
 
