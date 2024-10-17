@@ -4,6 +4,7 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -42,6 +43,20 @@ const (
 	transport = "tcp"
 	metrics   = "0.0.0.0:9100"
 )
+
+type GenconfigInput struct {
+	addr             string
+	addrBind         string
+	baseDir          string
+	basePort         int
+	cfgType          string
+	identifier       string
+	inputNetworkInfo string
+	logLevel         string
+	metrics          string
+	outDir           string
+	transport        string
+}
 
 type katzenpost struct {
 	baseDir   string
@@ -469,9 +484,30 @@ func identifierIsValid(s string) bool {
 	return re.MatchString(s)
 }
 
-func main() {
-	var err error
+func ParseFlags() GenconfigInput {
+	var gi GenconfigInput
+	flag.IntVar(&gi.basePort, "port", basePort, "First port number to use")
+	flag.StringVar(&gi.addr, "address", addr, "Address to publish (and bind to if -address-bind not set)")
+	flag.StringVar(&gi.addrBind, "address-bind", "", "Address to bind to")
+	flag.StringVar(&gi.baseDir, "dir-base", "", "Absolute path as installation directory in config files (default -dir-out)")
+	flag.StringVar(&gi.cfgType, "type", "", "Type of config to generate: mix, gateway, servicenode, client1, client2")
+	flag.StringVar(&gi.identifier, "identifier", "", "Node identifier; lowercase alphanumeric with 5 to 20 characters (default -type)")
+	flag.StringVar(&gi.inputNetworkInfo, "input", "network.yml", "Path to network info file")
+	flag.StringVar(&gi.logLevel, "log-level", "DEBUG", "logging level could be set to: DEBUG, INFO, NOTICE, WARNING, ERROR, CRITICAL")
+	flag.StringVar(&gi.metrics, "metrics", metrics, "Metrics endpoint")
+	flag.StringVar(&gi.outDir, "dir-out", "", "Path to write files to")
+	flag.StringVar(&gi.transport, "transport", transport, "Transport protocol: tcp, quic")
 
+	flag.Parse()
+
+	if gi.baseDir == "" {
+		gi.baseDir = gi.outDir
+	}
+
+	return gi
+}
+
+func Genconfig(gi GenconfigInput) error {
 	// tmp hack: these are here to minimize other changes to the original...
 	nrLayers := new(int)
 	nrNodes := new(int)
@@ -481,33 +517,26 @@ func main() {
 	nrVoting := new(int)
 	omitTopology := new(bool)
 
-	inputNetworkInfo := flag.String("input", "network.yml", "Path to network info file")
-	cfgType := flag.String("type", "", "Type of config to generate: mix, gateway, servicenode, client1, client2")
-	baseDir := flag.String("dir-base", "", "Absolute path as installation directory in config files (default -dir-out)")
-	basePort := flag.Int("port", basePort, "First port number to use")
-	addr := flag.String("address", addr, "Address to publish (and bind to if -address-bind not set)")
-	addrBind := flag.String("address-bind", "", "Address to bind to")
-	outDir := flag.String("dir-out", "", "Path to write files to")
-	logLevel := flag.String("log-level", "DEBUG", "logging level could be set to: DEBUG, INFO, NOTICE, WARNING, ERROR, CRITICAL")
-	transport := flag.String("transport", transport, "Transport protocol: tcp, quic")
-	metrics := flag.String("metrics", metrics, "Metrics endpoint")
-	identifier := flag.String("identifier", "", "Node identifier; lowercase alphanumeric with 5 to 20 characters (default -type)")
-
-	if *baseDir == "" {
-		baseDir = outDir
-	}
-
-	flag.Parse()
+	addr := &gi.addr
+	addrBind := &gi.addrBind
+	baseDir := &gi.baseDir
+	basePort := &gi.basePort
+	cfgType := &gi.cfgType
+	identifier := &gi.identifier
+	logLevel := &gi.logLevel
+	metrics := &gi.metrics
+	outDir := &gi.outDir
+	transport := &gi.transport
 
 	// Read the network info file
-	data, err := os.ReadFile(*inputNetworkInfo)
+	data, err := os.ReadFile(gi.inputNetworkInfo)
 	if err != nil {
-		log.Fatalf("Error reading file: %v\n", err)
+		return errors.New(fmt.Sprintf("Error reading file: %v\n", err))
 	}
 	var networkInfo zknConfig.NetworkInfo
 	err = yaml.Unmarshal(data, &networkInfo)
 	if err != nil {
-		log.Fatalf("Error decoding YAML: %v\n", err)
+		return errors.New(fmt.Sprintf("Error decoding YAML: %v\n", err))
 	}
 
 	*nrLayers = networkInfo.KpMiscTopologyLayers
@@ -520,26 +549,26 @@ func main() {
 	UserForwardPayloadLength := &networkInfo.KpConfigUserForwardPayloadLength
 
 	if *wirekem == "" {
-		log.Fatal("wire KEM must be set")
+		return errors.New("wire KEM must be set")
 	}
 
 	if *kem == "" && *nike == "" {
-		log.Fatal("either nike or kem must be set")
+		return errors.New("either nike or kem must be set")
 	}
 	if *kem != "" && *nike != "" {
-		log.Fatal("nike and kem flags cannot both be set")
+		return errors.New("nike and kem flags cannot both be set")
 	}
 
 	if *ratchetNike == "" {
-		log.Fatal("ratchetNike must be set")
+		return errors.New("ratchetNike must be set")
 	}
 
 	if *pkiSignatureScheme == "" {
-		log.Fatal("pkiSignatureScheme must be set")
+		return errors.New("pkiSignatureScheme must be set")
 	}
 
 	if *identifier != "" && !identifierIsValid(*identifier) {
-		log.Fatalf("Invalid identifier: %s", *identifier)
+		return errors.New(fmt.Sprintf("Invalid identifier: %s", *identifier))
 	}
 
 	// generate config for a single node of the given type, each with its own authority
@@ -550,7 +579,7 @@ func main() {
 	*voting = true
 	switch *cfgType {
 	case "":
-		log.Fatal("type must be set")
+		return errors.New("type must be set")
 	case "mix":
 		*nrNodes = 1
 	case "gateway":
@@ -560,7 +589,7 @@ func main() {
 	case "client1", "client2":
 		*voting = false
 	default:
-		log.Fatal("invalid type")
+		return errors.New("invalid type")
 	}
 
 	parameters := &vConfig.Parameters{
@@ -584,7 +613,7 @@ func main() {
 
 	s.wireKEMScheme = *wirekem
 	if kemschemes.ByName(*wirekem) == nil {
-		log.Fatal("invalid wire KEM scheme")
+		return errors.New("invalid wire KEM scheme")
 	}
 
 	s.baseDir = *baseDir
@@ -638,7 +667,7 @@ func main() {
 	if *nike != "" {
 		nikeScheme := schemes.ByName(*nike)
 		if nikeScheme == nil {
-			log.Fatalf("failed to resolve nike scheme %s", *nike)
+			return errors.New(fmt.Sprintf("failed to resolve nike scheme %s", *nike))
 		}
 		s.sphinxGeometry = geo.GeometryFromUserForwardPayloadLength(
 			nikeScheme,
@@ -650,7 +679,7 @@ func main() {
 	if *kem != "" {
 		kemScheme := kemschemes.ByName(*kem)
 		if kemScheme == nil {
-			log.Fatalf("failed to resolve kem scheme %s", *kem)
+			return errors.New(fmt.Sprintf("failed to resolve kem scheme %s", *kem))
 		}
 		s.sphinxGeometry = geo.KEMGeometryFromUserForwardPayloadLength(
 			kemScheme,
@@ -662,7 +691,7 @@ func main() {
 	if *pkiSignatureScheme != "" {
 		signScheme := signSchemes.ByName(*pkiSignatureScheme)
 		if signScheme == nil {
-			log.Fatalf("failed to resolve pki signature scheme %s", *pkiSignatureScheme)
+			return errors.New(fmt.Sprintf("failed to resolve pki signature scheme %s", *pkiSignatureScheme))
 		}
 		s.pkiSignatureScheme = signScheme
 	}
@@ -674,27 +703,27 @@ func main() {
 		// Generate the voting authority configurations
 		err := s.genVotingAuthoritiesCfg(*nrVoting, parameters, *nrLayers, *wirekem)
 		if err != nil {
-			log.Fatalf("getVotingAuthoritiesCfg failed: %s", err)
+			return errors.New(fmt.Sprintf("getVotingAuthoritiesCfg failed: %s", err))
 		}
 	}
 
 	// Generate the gateway configs.
 	for i := 0; i < *nrGateways; i++ {
 		if err = s.genNodeConfig(*identifier, true, false, *voting); err != nil {
-			log.Fatalf("Failed to generate provider config: %v", err)
+			return errors.New(fmt.Sprintf("Failed to generate provider config: %v", err))
 		}
 	}
 	// Generate the service node configs.
 	for i := 0; i < *nrServiceNodes; i++ {
 		if err = s.genNodeConfig(*identifier, false, true, *voting); err != nil {
-			log.Fatalf("Failed to generate provider config: %v", err)
+			return errors.New(fmt.Sprintf("Failed to generate provider config: %v", err))
 		}
 	}
 
 	// Generate the mix node configs.
 	for i := 0; i < *nrNodes; i++ {
 		if err = s.genNodeConfig(*identifier, false, false, *voting); err != nil {
-			log.Fatalf("Failed to generate node config: %v", err)
+			return errors.New(fmt.Sprintf("Failed to generate node config: %v", err))
 		}
 	}
 	// Generate the authority config
@@ -722,29 +751,38 @@ func main() {
 		}
 		for _, vCfg := range s.votingAuthConfigs {
 			if err := saveCfg(vCfg, *outDir); err != nil {
-				log.Fatalf("Failed to saveCfg of authority with %s", err)
+				return errors.New(fmt.Sprintf("Failed to saveCfg of authority with %s", err))
 			}
 		}
 	}
 	// write the mixes keys and configs to disk
 	for _, v := range s.nodeConfigs {
 		if err := saveCfg(v, *outDir); err != nil {
-			log.Fatalf("saveCfg failure: %s", err)
+			return errors.New(fmt.Sprintf("saveCfg failure: %s", err))
 		}
 	}
 
 	if *cfgType == "client1" {
 		err = s.genClientCfg()
 		if err != nil {
-			log.Fatalf("%s", err)
+			return err
 		}
 	}
 
 	if *cfgType == "client2" {
 		err = s.genClient2Cfg()
 		if err != nil {
-			log.Fatalf("%s", err)
+			return err
 		}
+	}
+
+	return nil
+}
+
+func main() {
+	gi := ParseFlags()
+	if err := Genconfig(gi); err != nil {
+		log.Fatalf("Error generating config: %v", err)
 	}
 }
 
