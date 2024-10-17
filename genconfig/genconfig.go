@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (C) 2022  Yawning Angel, David Stainton, Masala
 // SPDX-License-Identifier: AGPL-3.0-only
 
-package main
+package genconfig
 
 import (
 	"errors"
@@ -777,13 +777,6 @@ func Genconfig(gi GenconfigInput) error {
 	}
 
 	return nil
-}
-
-func main() {
-	gi := ParseFlags()
-	if err := Genconfig(gi); err != nil {
-		log.Fatalf("Error generating config: %v", err)
-	}
 }
 
 func identifier(cfg interface{}) string {
