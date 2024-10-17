@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 
 	"github.com/BurntSushi/toml"
@@ -227,7 +228,7 @@ func write(f *os.File, str string, args ...interface{}) {
 	}
 }
 
-func (s *katzenpost) genNodeConfig(isGateway, isServiceNode bool, isVoting bool) error {
+func (s *katzenpost) genNodeConfig(identifier string, isGateway bool, isServiceNode bool, isVoting bool) error {
 	const serverLogFile = "katzenpost.log"
 
 	n := fmt.Sprintf("mix%d", s.nodeIdx+1)
@@ -235,6 +236,10 @@ func (s *katzenpost) genNodeConfig(isGateway, isServiceNode bool, isVoting bool)
 		n = fmt.Sprintf("gateway%d", s.gatewayIdx+1)
 	} else if isServiceNode {
 		n = fmt.Sprintf("servicenode%d", s.serviceNodeIdx+1)
+	}
+
+	if identifier != "" {
+		n = identifier
 	}
 
 	cfg := new(sConfig.Config)
@@ -458,6 +463,12 @@ func (s *katzenpost) genAuthorizedNodes() ([]*vConfig.Node, []*vConfig.Node, []*
 	return gateways, serviceNodes, mixes, nil
 }
 
+func identifierIsValid(s string) bool {
+	pattern := `^[a-z0-9](?:[a-z0-9\-]{3,18}[a-z0-9])$`
+	re := regexp.MustCompile(pattern)
+	return re.MatchString(s)
+}
+
 func main() {
 	var err error
 
@@ -480,6 +491,7 @@ func main() {
 	logLevel := flag.String("log-level", "DEBUG", "logging level could be set to: DEBUG, INFO, NOTICE, WARNING, ERROR, CRITICAL")
 	transport := flag.String("transport", transport, "Transport protocol: tcp, quic")
 	metrics := flag.String("metrics", metrics, "Metrics endpoint")
+	identifier := flag.String("identifier", "", "Node identifier; lowercase alphanumeric with 5 to 20 characters (default -type)")
 
 	if *baseDir == "" {
 		baseDir = outDir
@@ -524,6 +536,10 @@ func main() {
 
 	if *pkiSignatureScheme == "" {
 		log.Fatal("pkiSignatureScheme must be set")
+	}
+
+	if *identifier != "" && !identifierIsValid(*identifier) {
+		log.Fatalf("Invalid identifier: %s", *identifier)
 	}
 
 	// generate config for a single node of the given type, each with its own authority
@@ -664,20 +680,20 @@ func main() {
 
 	// Generate the gateway configs.
 	for i := 0; i < *nrGateways; i++ {
-		if err = s.genNodeConfig(true, false, *voting); err != nil {
+		if err = s.genNodeConfig(*identifier, true, false, *voting); err != nil {
 			log.Fatalf("Failed to generate provider config: %v", err)
 		}
 	}
 	// Generate the service node configs.
 	for i := 0; i < *nrServiceNodes; i++ {
-		if err = s.genNodeConfig(false, true, *voting); err != nil {
+		if err = s.genNodeConfig(*identifier, false, true, *voting); err != nil {
 			log.Fatalf("Failed to generate provider config: %v", err)
 		}
 	}
 
 	// Generate the mix node configs.
 	for i := 0; i < *nrNodes; i++ {
-		if err = s.genNodeConfig(false, false, *voting); err != nil {
+		if err = s.genNodeConfig(*identifier, false, false, *voting); err != nil {
 			log.Fatalf("Failed to generate node config: %v", err)
 		}
 	}
