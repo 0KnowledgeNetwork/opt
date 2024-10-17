@@ -37,7 +37,7 @@ import (
 
 const (
 	addr      = "127.0.0.1"
-	basePort  = 30000
+	basePort  = 8080
 	transport = "tcp"
 	metrics   = "0.0.0.0:9100"
 )
