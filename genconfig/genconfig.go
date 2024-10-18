@@ -758,14 +758,17 @@ func Genconfig(gi GenconfigInput) error {
 		}
 	}
 
-	if *cfgType == "client1" {
+	// Also generate a client config for the configured gateway.
+	// TODO: client consumers get gateways from appchain.
+
+	if *cfgType == "client1" || *cfgType == "gateway" {
 		err = s.genClientCfg()
 		if err != nil {
 			return err
 		}
 	}
 
-	if *cfgType == "client2" {
+	if *cfgType == "client2" || *cfgType == "gateway" {
 		err = s.genClient2Cfg()
 		if err != nil {
 			return err
