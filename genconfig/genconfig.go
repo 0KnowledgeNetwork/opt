@@ -125,7 +125,6 @@ func addressesFromURLs(addrs []string) map[string][]string {
 }
 
 func (s *katzenpost) genClient2Cfg() error {
-	log.Print("genClient2Cfg begin")
 	os.Mkdir(filepath.Join(s.outDir, "client2"), 0700)
 	cfg := new(cConfig2.Config)
 
@@ -159,7 +158,6 @@ func (s *katzenpost) genClient2Cfg() error {
 	// Debug section
 	cfg.Debug = s.debugConfigClient2
 
-	log.Print("before gathering providers")
 	gateways := make([]*cConfig2.Gateway, 0)
 	for i := 0; i < len(s.nodeConfigs); i++ {
 		if s.nodeConfigs[i].Gateway == nil {
@@ -179,21 +177,15 @@ func (s *katzenpost) genClient2Cfg() error {
 		}
 		gateways = append(gateways, gateway)
 	}
-	if len(gateways) == 0 {
-		log.Print("Note: 0 gateways")
-	}
-	log.Print("after gathering providers")
 	cfg.PinnedGateways = &cConfig2.Gateways{
 		Gateways: gateways,
 	}
 
-	log.Print("before save config")
 	err := saveCfg(cfg, s.outDir)
 	if err != nil {
 		log.Printf("save config failure %s", err.Error())
 		return err
 	}
-	log.Print("after save config")
 	return nil
 }
 
