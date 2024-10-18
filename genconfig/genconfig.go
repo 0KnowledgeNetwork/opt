@@ -246,16 +246,7 @@ func write(f *os.File, str string, args ...interface{}) {
 func (s *katzenpost) genNodeConfig(identifier string, isGateway bool, isServiceNode bool, isVoting bool) error {
 	const serverLogFile = "katzenpost.log"
 
-	n := fmt.Sprintf("mix%d", s.nodeIdx+1)
-	if isGateway {
-		n = fmt.Sprintf("gateway%d", s.gatewayIdx+1)
-	} else if isServiceNode {
-		n = fmt.Sprintf("servicenode%d", s.serviceNodeIdx+1)
-	}
-
-	if identifier != "" {
-		n = identifier
-	}
+	n := identifier
 
 	cfg := new(sConfig.Config)
 	cfg.SphinxGeometry = s.sphinxGeometry
@@ -398,7 +389,7 @@ func (s *katzenpost) genNodeConfig(identifier string, isGateway bool, isServiceN
 	return cfg.FixupAndValidate()
 }
 
-func (s *katzenpost) genVotingAuthoritiesCfg(numAuthorities int, parameters *vConfig.Parameters, nrLayers int, wirekem string) error {
+func (s *katzenpost) genVotingAuthoritiesCfg(identifier string, numAuthorities int, parameters *vConfig.Parameters, nrLayers int, wirekem string) error {
 
 	configs := []*vConfig.Config{}
 
@@ -410,9 +401,9 @@ func (s *katzenpost) genVotingAuthoritiesCfg(numAuthorities int, parameters *vCo
 		cfg.Server = &vConfig.Server{
 			WireKEMScheme:      s.wireKEMScheme,
 			PKISignatureScheme: s.pkiSignatureScheme.Name(),
-			Identifier:         fmt.Sprintf("auth%d", i),
+			Identifier:         identifier,
 			Addresses:          []string{fmt.Sprintf("%s://127.0.0.1:%d", s.transport, s.lastPort)},
-			DataDir:            filepath.Join(s.baseDir, fmt.Sprintf("auth%d", i)),
+			DataDir:            filepath.Join(s.baseDir, identifier),
 		}
 		os.Mkdir(filepath.Join(s.outDir, cfg.Server.Identifier), 0700)
 		s.lastPort += 1
@@ -431,7 +422,7 @@ func (s *katzenpost) genVotingAuthoritiesCfg(numAuthorities int, parameters *vCo
 		idKey := cfgIdKey(cfg, s.outDir)
 		linkKey := cfgLinkKey(cfg, s.outDir, wirekem)
 		authority := &vConfig.Authority{
-			Identifier:         fmt.Sprintf("auth%d", i),
+			Identifier:         identifier,
 			IdentityPublicKey:  idKey,
 			LinkPublicKey:      linkKey,
 			WireKEMScheme:      wirekem,
@@ -592,6 +583,10 @@ func Genconfig(gi GenconfigInput) error {
 		return errors.New("invalid type")
 	}
 
+	if *identifier == "" {
+		identifier = cfgType
+	}
+
 	parameters := &vConfig.Parameters{
 		SendRatePerMinute: networkInfo.KpConfigSendRatePerMinute,
 		Mu:                networkInfo.KpConfigMu,
@@ -701,7 +696,8 @@ func Genconfig(gi GenconfigInput) error {
 
 	if *voting {
 		// Generate the voting authority configurations
-		err := s.genVotingAuthoritiesCfg(*nrVoting, parameters, *nrLayers, *wirekem)
+		authIdentifier := fmt.Sprintf("%s-auth", *identifier)
+		err := s.genVotingAuthoritiesCfg(authIdentifier, *nrVoting, parameters, *nrLayers, *wirekem)
 		if err != nil {
 			return errors.New(fmt.Sprintf("getVotingAuthoritiesCfg failed: %s", err))
 		}
