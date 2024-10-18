@@ -470,7 +470,7 @@ func (s *katzenpost) genAuthorizedNodes() ([]*vConfig.Node, []*vConfig.Node, []*
 }
 
 func identifierIsValid(s string) bool {
-	pattern := `^[a-z0-9](?:[a-z0-9\-]{3,18}[a-z0-9])$`
+	pattern := `^[a-z0-9](?:[a-z0-9\-]{2,18}[a-z0-9])$`
 	re := regexp.MustCompile(pattern)
 	return re.MatchString(s)
 }
@@ -482,7 +482,7 @@ func ParseFlags() GenconfigInput {
 	flag.StringVar(&gi.addrBind, "address-bind", "", "Address to bind to")
 	flag.StringVar(&gi.baseDir, "dir-base", "", "Absolute path as installation directory in config files (default -dir-out)")
 	flag.StringVar(&gi.cfgType, "type", "", "Type of config to generate: mix, gateway, servicenode, client1, client2")
-	flag.StringVar(&gi.identifier, "identifier", "", "Node identifier; lowercase alphanumeric with 5 to 20 characters (default -type)")
+	flag.StringVar(&gi.identifier, "identifier", "", "Node identifier; lowercase alphanumeric with 4 to 20 characters (default -type)")
 	flag.StringVar(&gi.inputNetworkInfo, "input", "network.yml", "Path to network info file")
 	flag.StringVar(&gi.logLevel, "log-level", "DEBUG", "logging level could be set to: DEBUG, INFO, NOTICE, WARNING, ERROR, CRITICAL")
 	flag.StringVar(&gi.metrics, "metrics", metrics, "Metrics endpoint")
