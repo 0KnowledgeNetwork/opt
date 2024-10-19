@@ -49,6 +49,7 @@ type GenconfigInput struct {
 	addrBind         string
 	baseDir          string
 	basePort         int
+	binSuffix        string
 	cfgType          string
 	identifier       string
 	inputNetworkInfo string
@@ -473,6 +474,7 @@ func ParseFlags() GenconfigInput {
 	flag.StringVar(&gi.addr, "address", addr, "Address to publish (and bind to if -address-bind not set)")
 	flag.StringVar(&gi.addrBind, "address-bind", "", "Address to bind to")
 	flag.StringVar(&gi.baseDir, "dir-base", "", "Absolute path as installation directory in config files (default -dir-out)")
+	flag.StringVar(&gi.binSuffix, "binary-suffix", "", "Suffix for binaries")
 	flag.StringVar(&gi.cfgType, "type", "", "Type of config to generate: mix, gateway, servicenode, client1, client2")
 	flag.StringVar(&gi.identifier, "identifier", "", "Node identifier; lowercase alphanumeric with 4 to 20 characters (default -type)")
 	flag.StringVar(&gi.inputNetworkInfo, "input", "network.yml", "Path to network info file")
@@ -504,6 +506,7 @@ func Genconfig(gi GenconfigInput) error {
 	addrBind := &gi.addrBind
 	baseDir := &gi.baseDir
 	basePort := &gi.basePort
+	binSuffix := &gi.binSuffix
 	cfgType := &gi.cfgType
 	identifier := &gi.identifier
 	logLevel := &gi.logLevel
@@ -605,7 +608,7 @@ func Genconfig(gi GenconfigInput) error {
 
 	s.baseDir = *baseDir
 	s.outDir = *outDir
-	s.binSuffix = ""
+	s.binSuffix = *binSuffix
 	s.basePort = uint16(*basePort)
 	s.lastPort = s.basePort + 1
 	s.addr = *addr
