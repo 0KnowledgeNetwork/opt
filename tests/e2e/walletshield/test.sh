@@ -7,17 +7,18 @@ status=0
 run_test() {
   test_dir="$1"
   test_case="${test_dir#${dir}}"
+  output=$(mktemp)
 
   if [ -f "${test_dir}/in.json" ]; then
     curl \
       -X POST \
       -H 'Content-Type: application/json' \
       -d "$(cat ${test_dir}/in.json)" \
-      --output /tmp/out.json \
+      --output ${output} \
       --silent \
       "${uri}${test_case}"
 
-    if ! diff "${test_dir}/out.json" /tmp/out.json > /dev/null; then
+    if ! diff "${test_dir}/out.json" ${output} > /dev/null; then
       echo "${test_case}: ❌ failed"
       status=1
     else
@@ -27,6 +28,7 @@ run_test() {
     echo "${test_case}: skipped (test data files not found)"
   fi
 
+  rm -f ${output}
   sleep 1s
 }
 
