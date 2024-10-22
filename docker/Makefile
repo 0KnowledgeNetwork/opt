@@ -1,17 +1,20 @@
+# appchain, voting
+pki?=voting
+
 tmp?=/tmp
 warped?=true
 mixes=3
 gateways=1
 serviceNodes=1
 
-# each node gets its own auth
-auths=5
-
+# only used by pki=voting
+auths=3
 UserForwardPayloadLength=30000
 
-distro=alpine
-net_name=appchain_mixnet
-docker_compose_yml=$(net_name)/docker-compose.yml
+# pki=appchain requires debian (katzenpost alpine docker image does not have bash)
+distro=debian
+
+net_name=mixnet
 sh=$(shell if echo ${distro}|grep -q alpine; then echo sh; else echo bash; fi)
 cache_dir=cache
 log_level=DEBUG
@@ -28,6 +31,7 @@ docker_run_sh=$(docker) run ${docker_args} $(mount_net_name) $(mount_opt) --rm k
 katzenpost_dir=${tmp}/katzenpost.opt
 katzenpost_version=$(shell grep -E '^	github.com/katzenpost/katzenpost ' ../go.mod | awk '{print $$2}')
 net_dir=$(katzenpost_dir)/docker/$(net_name)
+docker_compose_yml=$(net_dir)/docker-compose.yml
 
 # export variables to the environment for consumption by invoked Makefile(s)
 export
@@ -59,7 +63,6 @@ custom-binaries: $(net_dir)/http_proxy.$(distro) $(net_dir)/pki.$(distro)
 
 .PHONY: custom-config
 custom-config:
-	rsync -av --no-perms $(net_name)/ $(net_dir)/
 	printf '%s\n' "$$SERVICENODE_PLUGINS" | sed -i '/^\[ServiceNode\]/r /dev/stdin' $(net_dir)/servicenode1/katzenpost.toml
 
 .PHONY: clone-katzenpost
@@ -73,10 +76,25 @@ clone-katzenpost:
 			$(katzenpost_dir); \
 	fi
 
+# this genconfig target is intended to be run within the katzenpost docker container
+.PHONY: genconfig
+genconfig:
+	cd ../genconfig/cmd/genconfig && go build
+	./genconfig.sh
+
+$(docker_compose_yml): $(distro)_base.stamp | $(net_name) $(cache_dir)
+	@if [ "$(pki)" = "appchain" ]; then \
+		$(docker_run_sh) 'cd /go/opt/docker ; make genconfig'; \
+	else \
+		$(MAKE) -e -C $(katzenpost_dir)/docker $@; \
+	fi
+
+.PHONY: $(distro)_base.stamp
+$(distro)_base.stamp:
+	$(MAKE) -e -C $(katzenpost_dir)/docker $@
+
 $(net_dir)/pki.$(distro): $(katzenpost_dir)/docker/$(distro)_base.stamp $(docker_compose_yml) | $(net_name) $(cache_dir)
 	$(docker_run_sh) 'cd /go/opt/pki ; go build -trimpath -ldflags ${ldflags} && mv pki /$(net_name)/pki.$(distro)'
-	# replace the voting auth with our custom pki
-	sed -i.bak "s/voting\.$(distro)/pki\.$(distro)/" $(katzenpost_dir)/docker/$(docker_compose_yml)
 
 $(net_dir)/http_proxy.$(distro): $(katzenpost_dir)/docker/$(distro)_base.stamp | $(net_name) $(cache_dir)
 	$(docker_run_sh) 'cd /go/opt/server_plugins/cbor_plugins/http_proxy/cmd/http_proxy ; go build -trimpath -ldflags ${ldflags} && mv http_proxy /$(net_name)/http_proxy.$(distro)'
