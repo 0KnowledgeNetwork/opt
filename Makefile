@@ -1,4 +1,4 @@
-.PHONY: all app-walletshield genconfig http_proxy clean
+.PHONY: all app-walletshield genconfig http_proxy pki clean
 
 all: app-walletshield http_proxy
 
@@ -11,7 +11,11 @@ genconfig:
 http_proxy:
 	cd server_plugins/cbor_plugins/http_proxy/cmd/http_proxy; go build
 
+pki:
+	make -C pki
+
 clean:
+	make -C pki clean
 	rm -f \
 		apps/walletshield/walletshield \
 		genconfig/cmd/genconfig/genconfig \
