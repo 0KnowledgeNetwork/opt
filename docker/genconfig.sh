@@ -21,7 +21,7 @@ echo "  dir-base: ${dir_base}"
 echo "  dir-out: ${dir_out}"
 
 gencfg="../genconfig/cmd/genconfig/genconfig \
-  -input ../genconfig/network.yml.sample \
+  -input ./network.yml \
   -binary-suffix ${binary_suffix} \
   -dir-base ${dir_base} \
   -dir-out ${dir_out}"
