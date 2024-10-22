@@ -88,8 +88,9 @@ func (s *state) getDocument(descriptors []*pki.MixDescriptor, params *config.Par
 	// differentiable as such because of topology violations in the present epoch.
 	topology = s.generateRandomTopology(nodes, srv)
 
-	lambdaG := computeLambdaG(s.s.cfg)
-	s.log.Debugf("computed lambdaG is %f", lambdaG)
+	nodesPerLayer := len(nodes) / s.s.cfg.Debug.Layers
+	lambdaG := computeLambdaGFromNodesPerLayer(s.s.cfg, nodesPerLayer)
+	s.log.Debugf("computed lambdaG from %d nodes per layer is %f", nodesPerLayer, lambdaG)
 
 	// Build the Document.
 	doc := &pki.Document{

@@ -58,6 +58,15 @@ type Server struct {
 	haltOnce   sync.Once
 }
 
+// used for dynamic topology derived from appchain, and not from config file
+func computeLambdaGFromNodesPerLayer(cfg *config.Config, npl int) float64 {
+	n := float64(npl)
+	if n == 1 {
+		return cfg.Parameters.LambdaP + cfg.Parameters.LambdaL + cfg.Parameters.LambdaD
+	}
+	return n * math.Log(n)
+}
+
 func computeLambdaG(cfg *config.Config) float64 {
 	n := float64(len(cfg.Topology.Layers[0].Nodes))
 	if n == 1 {
