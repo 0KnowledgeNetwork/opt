@@ -1,3 +1,4 @@
+# Example network configuration file; configures local test network
 build_datetime: '1728353595'
 kp_client_debug_DisableDecoyTraffic: false
 kp_client_debug_EnableTimeSync: false
