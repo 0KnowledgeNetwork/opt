@@ -1,0 +1,5 @@
+.git
+.gitignore
+docker/Makefile.appchain
+docker/node/
+docker/*.sh

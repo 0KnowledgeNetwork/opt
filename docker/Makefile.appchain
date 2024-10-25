@@ -1,0 +1,51 @@
+net ?= /tmp/appchain-mixnet
+base := /mixnet
+docker_image ?= zkn/node:latest
+docker_user ?= $(shell [ "$(docker)" = "podman" ] && echo 0:0 || echo $${SUDO_UID:-$$(id -u)}:$${SUDO_GID:-$$(id -g)})
+docker := $(shell if which podman|grep -q .; then echo podman; else echo docker; fi)
+docker_compose ?= DOCKER_USER=$(docker_user) $(shell if which podman|grep -q .; then echo DOCKER_HOST="unix://$$XDG_RUNTIME_DIR/podman/podman.sock"; fi) docker compose
+docker_args := --user ${docker_user}
+docker_run := $(docker) run $(docker_args) --network=host --rm --volume $(shell readlink -f $(net)):$(base)
+
+num_mixes=3
+num_gateways=1
+num_servicenodes=1
+
+export
+
+$(net):
+	mkdir -vp $(net)
+
+image: $(net)/image.stamp
+$(net)/image.stamp: $(net)
+	$(docker) build -t $(docker_image) -f ./node/Dockerfile ../
+	touch $(net)/image.stamp
+
+config: $(net)/docker-compose.yml
+$(net)/docker-compose.yml: $(net) $(net)/image.stamp
+	./genconfig.sh
+
+start: config image $(net)/run.stamp
+$(net)/run.stamp:
+	cd $(net); $(docker_compose) up --remove-orphans -d; $(docker) compose top
+	touch $(net)/run.stamp
+
+wait: $(net)/run.stamp
+	$(docker_run) $(docker_image) /opt/zkn/fetch -f $(base)/client/client.toml
+
+probe: $(net)/run.stamp
+	$(docker_run) $(docker_image) /opt/zkn/walletshield \
+		-config $(base)/client2/client.toml \
+		-log_level DEBUG \
+		-probe \
+		-probe_count 1
+
+.PHONY: stop
+stop:
+	[ -e $(net) ] && cd $(net) && $(docker_compose) down --remove-orphans
+	rm -fv $(net)/run.stamp
+
+.PHONY: clean
+clean: stop
+	$(docker) rmi $(docker_image)
+	rm -fv $(net)/image.stamp
