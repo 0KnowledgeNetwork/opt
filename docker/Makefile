@@ -76,6 +76,7 @@ clone-katzenpost:
 	fi
 
 # this genconfig target is intended to be run within the katzenpost docker container
+# for pki=appchain
 .PHONY: genconfig
 genconfig:
 	cd ../genconfig/cmd/genconfig && go build

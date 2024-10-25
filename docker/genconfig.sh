@@ -1,8 +1,9 @@
 #!/bin/bash
 
 # This script is invoked by ./Makefile to generate config files for a local
-# test network. Variables set by the Makefile are read from the environment.
-# This is intended to be run from within the katzenpost docker container.
+# test network using appchain pki. Variables set by the Makefile are read from
+# the environment. This is intended to be run from within the katzenpost docker
+# container.
 
 port=30000
 dir_base="/${net_name}"
