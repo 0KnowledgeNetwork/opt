@@ -10,8 +10,12 @@ serviceNodes=1
 auths=3
 UserForwardPayloadLength=30000
 
+distro=alpine
+
 # pki=appchain requires debian (katzenpost alpine docker image does not have bash)
-distro=debian
+ifeq ($(pki), appchain)
+	distro = debian
+endif
 
 net_name=mixnet
 sh=$(shell if echo ${distro}|grep -q alpine; then echo sh; else echo bash; fi)
