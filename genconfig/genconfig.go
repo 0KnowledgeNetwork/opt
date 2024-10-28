@@ -1,3 +1,5 @@
+// related: katzenpost:genconfig/main.go
+
 // SPDX-FileCopyrightText: Copyright (C) 2022  Yawning Angel, David Stainton, Masala
 // SPDX-License-Identifier: AGPL-3.0-only
 
@@ -129,9 +131,16 @@ func (s *katzenpost) genClient2Cfg() error {
 	os.Mkdir(filepath.Join(s.outDir, "client2"), 0700)
 	cfg := new(cConfig2.Config)
 
-	//cfg.ListenNetwork = "unixpacket"
+	// abstract unix domain sockets only work on linux,
+	//cfg.ListenNetwork = "unix"
 	//cfg.ListenAddress = "@katzenpost"
+	// therefore if unix sockets are requires on non-linux platforms
+	// the solution is to specify a unix socket file path instead of
+	// and abstract unix socket name:
+	//cfg.ListenNetwork = "unix"
+	//cfg.ListenAddress = "/tmp/katzenzpost.socket"
 
+	// Use TCP by default so that the CI tests pass on all platforms
 	cfg.ListenNetwork = "tcp"
 	cfg.ListenAddress = "localhost:64331"
 
