@@ -88,7 +88,7 @@ genconfig:
 
 $(docker_compose_yml): $(distro)_base.stamp | $(net_name) $(cache_dir)
 	@if [ "$(pki)" = "appchain" ]; then \
-		$(docker_run_sh) 'cd /go/opt/docker ; make genconfig'; \
+		$(docker_run_sh) 'cd /go/opt/docker ; make pki=appchain genconfig'; \
 	else \
 		$(MAKE) -e -C $(katzenpost_dir)/docker $@; \
 	fi
