@@ -1,6 +1,6 @@
 .PHONY: all app-walletshield genconfig http_proxy pki clean
 
-all: app-walletshield http_proxy
+all: app-walletshield http_proxy genconfig pki
 
 app-walletshield:
 	make -C apps/walletshield
