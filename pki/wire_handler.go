@@ -1,16 +1,18 @@
+// related: katzenpost:authority/voting/server/wire_handler.go
+
 package main
 
 import (
-	"crypto/ecdh"
 	"crypto/hmac"
-	"crypto/rand"
 	"net"
 	"time"
 
 	"github.com/katzenpost/hpqc/hash"
 	"github.com/katzenpost/hpqc/kem/schemes"
+	ecdh "github.com/katzenpost/hpqc/nike/x25519"
+	"github.com/katzenpost/hpqc/rand"
 
-	"github.com/katzenpost/katzenpost/core/cert"
+	signSchemes "github.com/katzenpost/hpqc/sign/schemes"
 	"github.com/katzenpost/katzenpost/core/epochtime"
 	"github.com/katzenpost/katzenpost/core/pki"
 	"github.com/katzenpost/katzenpost/core/wire"
@@ -26,11 +28,6 @@ func (s *Server) onConn(conn net.Conn) {
 	rAddr := conn.RemoteAddr()
 	s.log.Debugf("Accepted new connection: %v", rAddr)
 
-	defer func() {
-		conn.Close()
-		s.wg.Done()
-	}()
-
 	// Initialize the wire protocol session.
 	auth := &wireAuthenticator{s: s}
 	keyHash := hash.Sum256From(s.identityPublicKey)
@@ -41,19 +38,27 @@ func (s *Server) onConn(conn net.Conn) {
 	}
 
 	cfg := &wire.SessionConfig{
-		KEMScheme:         kemscheme,
-		Geometry:          nil,
-		Authenticator:     auth,
-		AdditionalData:    keyHash[:],
-		AuthenticationKey: s.linkKey,
-		RandomReader:      rand.Reader,
+		KEMScheme:          kemscheme,
+		PKISignatureScheme: signSchemes.ByName(s.cfg.Server.PKISignatureScheme),
+		Geometry:           s.geo,
+		Authenticator:      auth,
+		AdditionalData:     keyHash[:],
+		AuthenticationKey:  s.linkKey,
+		RandomReader:       rand.Reader,
 	}
 	wireConn, err := wire.NewPKISession(cfg, false)
 	if err != nil {
 		s.log.Debugf("Peer %v: Failed to initialize session: %v", rAddr, err)
 		return
 	}
-	defer wireConn.Close()
+
+	// wireConn.Close calls conn.Close. In quic, sends are nonblocking and Close
+	// tears down the connection before the response was sent.
+	// So this waits 100ms after the response has been served before closing the connection.
+	defer func() {
+		<-time.After(time.Millisecond * 100)
+		wireConn.Close()
+	}()
 
 	// Handshake.
 	conn.SetDeadline(time.Now().Add(initialDeadline))
@@ -118,17 +123,26 @@ func (s *Server) onMix(rAddr net.Addr, cmd commands.Command, peerIdentityKeyHash
 }
 
 func (s *Server) onGetConsensus(rAddr net.Addr, cmd *commands.GetConsensus) commands.Command {
+	s.log.Debugf("onGetConsensus: rAddr: %v, cmd: %+v", rAddr, cmd)
 	resp := &commands.Consensus{}
-	resp.ErrorCode = commands.ConsensusOk
-
-	// FIXME: retrieve document from app chain / smart contract,
-	// cmd.Epoch will be used to indentify which doc to retrieve.
-	// resp.Payload = doc
-
+	doc, err := s.state.documentForEpoch(cmd.Epoch)
+	if err != nil {
+		switch err {
+		case errGone:
+			resp.ErrorCode = commands.ConsensusGone
+		default:
+			resp.ErrorCode = commands.ConsensusNotFound
+		}
+	} else {
+		s.log.Debugf("Peer: %v: Serving document for epoch %v.", rAddr, cmd.Epoch)
+		resp.ErrorCode = commands.ConsensusOk
+		resp.Payload = doc
+	}
 	return resp
 }
 
 func (s *Server) onPostDescriptor(rAddr net.Addr, cmd *commands.PostDescriptor, pubKeyHash []byte) commands.Command {
+	s.log.Debugf("onPostDescriptor: from rAddr: %v, for epoch: %d", rAddr, cmd.Epoch)
 	resp := &commands.PostDescriptorStatus{
 		ErrorCode: commands.DescriptorInvalid,
 	}
@@ -163,8 +177,9 @@ func (s *Server) onPostDescriptor(rAddr net.Addr, cmd *commands.PostDescriptor, 
 		resp.ErrorCode = commands.DescriptorForbidden
 		return resp
 	}
+	pkiSignatureScheme := signSchemes.ByName(s.cfg.Server.PKISignatureScheme)
 
-	descIdPubKey, err := cert.Scheme.UnmarshalBinaryPublicKey(desc.IdentityKey)
+	descIdPubKey, err := pkiSignatureScheme.UnmarshalBinaryPublicKey(desc.IdentityKey)
 	if err != nil {
 		s.log.Error("failed to unmarshal descriptor IdentityKey")
 		resp.ErrorCode = commands.DescriptorForbidden
@@ -177,15 +192,23 @@ func (s *Server) onPostDescriptor(rAddr net.Addr, cmd *commands.PostDescriptor, 
 		return resp
 	}
 
-	// FIXME: Ensure that the descriptor is from an allowed peer.
-	/*
-		if !s.state.isDescriptorAuthorized(desc) {
-			s.log.Errorf("Peer %v: Identity key hash '%x' not authorized", rAddr, hash.Sum256(desc.IdentityKey))
-			resp.ErrorCode = commands.DescriptorForbidden
-			return resp
-		}
-	*/
-	// FIXME: send the mix descriptor to the app chain / smart contract.
+	// Ensure that the descriptor is from an allowed peer.
+	if !s.state.isDescriptorAuthorized(desc) {
+		s.log.Errorf("Peer %v: Identity key hash '%x' not authorized", rAddr, hash.Sum256(desc.IdentityKey))
+		resp.ErrorCode = commands.DescriptorForbidden
+		return resp
+	}
+
+	// TODO: Use the packet loss statistics to make decisions about how to generate the consensus document.
+
+	// Hand the descriptor off to the state.  As long as this returns
+	// a nil, the authority "accepts" the descriptor.
+	err = s.state.onDescriptorUpload(cmd.Payload, desc, cmd.Epoch)
+	if err != nil {
+		s.log.Errorf("Peer %v: Rejected descriptor for epoch %v: %v", rAddr, cmd.Epoch, err)
+		resp.ErrorCode = commands.DescriptorConflict
+		return resp
+	}
 
 	// Return a successful response.
 	s.log.Debugf("Peer %v: Accepted descriptor for epoch %v: '%v'", rAddr, cmd.Epoch, desc)
@@ -217,15 +240,10 @@ func (a *wireAuthenticator) IsPeerValid(creds *wire.PeerCredentials) bool {
 	pk := [hash.HashSize]byte{}
 	copy(pk[:], creds.AdditionalData[:hash.HashSize])
 
-	// FIXME: query the app chain to determine if
-	// the identity is a mix or a provider.
-	isProvider := false
-	isMix := true
-	//_, isMix := a.s.state.authorizedMixes[pk]
-	//_, isProvider := a.s.state.authorizedProviders[pk]
-
-	if isMix || isProvider {
-		a.isMix = true // Providers and mixes are both mixes. :)
+	_, isRegistered := a.s.state.registeredLocalNodes[pk]
+	if isRegistered {
+		a.s.log.Debugf("Accepting authority authentication from locally registered node with public key '%x'", pk)
+		a.isMix = true // Gateways and service nodes and mixes are all mixes.
 		return true
 	} else {
 		a.s.log.Warning("Rejecting authority authentication, public key mismatch.")

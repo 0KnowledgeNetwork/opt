@@ -1,14 +1,23 @@
+# appchain, voting
+pki?=voting
+
 warped?=true
 mixes=3
-auths=3
 gateways=1
 serviceNodes=1
 
+# only used by pki=voting
+auths=3
 UserForwardPayloadLength=30000
 
 distro=alpine
-net_name=voting_mixnet
-docker_compose_yml=$(net_name)/docker-compose.yml
+
+# pki=appchain requires debian (katzenpost alpine docker image does not have bash)
+ifeq ($(pki), appchain)
+	distro = debian
+endif
+
+net_name=mixnet
 sh=$(shell if echo ${distro}|grep -q alpine; then echo sh; else echo bash; fi)
 cache_dir=cache
 log_level=DEBUG
@@ -22,9 +31,10 @@ mount_net_name=-v $(katzenpost_dir)/docker/$(net_name):/$(net_name)
 mount_opt=-v $(shell readlink -f ..):/go/opt
 docker_run_sh=$(docker) run ${docker_args} $(mount_net_name) $(mount_opt) --rm katzenpost-$(distro)_base $(sh) -c
 
-katzenpost_dir=/tmp/katzenpost.opt
-katzenpost_version=$(shell grep -E '^	github.com/katzenpost/katzenpost ' ../go.mod | awk '{print $$2}')
+katzenpost_dir?=/tmp/katzenpost.opt
+katzenpost_version?=$(shell grep -E '^	github.com/katzenpost/katzenpost ' ../go.mod | awk '{print $$2}')
 net_dir=$(katzenpost_dir)/docker/$(net_name)
+docker_compose_yml=$(net_dir)/docker-compose.yml
 
 # export variables to the environment for consumption by invoked Makefile(s)
 export
@@ -52,7 +62,7 @@ help:
 	@$(MAKE) -e -C $(katzenpost_dir)/docker $@
 
 .PHONY: custom-binaries
-custom-binaries: $(net_dir)/http_proxy.$(distro)
+custom-binaries: $(net_dir)/http_proxy.$(distro) $(net_dir)/pki.$(distro)
 
 .PHONY: custom-config
 custom-config:
@@ -68,6 +78,27 @@ clone-katzenpost:
 			https://github.com/katzenpost/katzenpost.git \
 			$(katzenpost_dir); \
 	fi
+
+# this genconfig target is intended to be run within the katzenpost docker container
+# for pki=appchain
+.PHONY: genconfig
+genconfig:
+	cd ../genconfig/cmd/genconfig && go build
+	./genconfig.sh
+
+$(docker_compose_yml): $(distro)_base.stamp | $(net_name) $(cache_dir)
+	@if [ "$(pki)" = "appchain" ]; then \
+		$(docker_run_sh) 'cd /go/opt/docker ; make genconfig'; \
+	else \
+		$(MAKE) -e -C $(katzenpost_dir)/docker $@; \
+	fi
+
+.PHONY: $(distro)_base.stamp
+$(distro)_base.stamp:
+	$(MAKE) -e -C $(katzenpost_dir)/docker $@
+
+$(net_dir)/pki.$(distro): $(katzenpost_dir)/docker/$(distro)_base.stamp $(docker_compose_yml) | $(net_name) $(cache_dir)
+	$(docker_run_sh) 'cd /go/opt/pki ; go build -trimpath -ldflags ${ldflags} && mv pki /$(net_name)/pki.$(distro)'
 
 $(net_dir)/http_proxy.$(distro): $(katzenpost_dir)/docker/$(distro)_base.stamp | $(net_name) $(cache_dir)
 	$(docker_run_sh) 'cd /go/opt/server_plugins/cbor_plugins/http_proxy/cmd/http_proxy ; go build -trimpath -ldflags ${ldflags} && mv http_proxy /$(net_name)/http_proxy.$(distro)'

@@ -1,10 +1,14 @@
+// related: katzenpost:authority/voting/server/server.go
+
 package main
 
 import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"math"
 	"net"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sync"
@@ -17,11 +21,13 @@ import (
 	"github.com/katzenpost/hpqc/kem/schemes"
 	"github.com/katzenpost/hpqc/sign"
 	signpem "github.com/katzenpost/hpqc/sign/pem"
+	signSchemes "github.com/katzenpost/hpqc/sign/schemes"
 
-	"github.com/katzenpost/katzenpost/core/cert"
 	"github.com/katzenpost/katzenpost/core/log"
 	"github.com/katzenpost/katzenpost/core/sphinx/geo"
 	"github.com/katzenpost/katzenpost/core/utils"
+	"github.com/katzenpost/katzenpost/http/common"
+	"github.com/quic-go/quic-go"
 
 	"github.com/0KnowledgeNetwork/opt/pki/config"
 )
@@ -30,7 +36,10 @@ import (
 // terminates due to the `GenerateOnly` debug config option.
 var ErrGenerateOnly = errors.New("server: GenerateOnly set")
 
+// Server is a voting authority server instance.
 type Server struct {
+	sync.WaitGroup
+
 	cfg *config.Config
 	geo *geo.Geometry
 
@@ -41,12 +50,29 @@ type Server struct {
 	logBackend *log.Backend
 	log        *logging.Logger
 
+	state     *state
 	listeners []net.Listener
 
-	wg         *sync.WaitGroup
 	fatalErrCh chan error
 	haltedCh   chan interface{}
 	haltOnce   sync.Once
+}
+
+// used for dynamic topology derived from appchain, and not from config file
+func computeLambdaGFromNodesPerLayer(cfg *config.Config, npl int) float64 {
+	n := float64(npl)
+	if n == 1 {
+		return cfg.Parameters.LambdaP + cfg.Parameters.LambdaL + cfg.Parameters.LambdaD
+	}
+	return n * math.Log(n)
+}
+
+func computeLambdaG(cfg *config.Config) float64 {
+	n := float64(len(cfg.Topology.Layers[0].Nodes))
+	if n == 1 {
+		return cfg.Parameters.LambdaP + cfg.Parameters.LambdaL + cfg.Parameters.LambdaD
+	}
+	return n * math.Log(n)
 }
 
 func (s *Server) initDataDir() error {
@@ -86,9 +112,24 @@ func (s *Server) initLogging() error {
 	var err error
 	s.logBackend, err = log.New(p, s.cfg.Logging.Level, s.cfg.Logging.Disable)
 	if err == nil {
-		s.log = s.logBackend.GetLogger("authority")
+		s.log = s.logBackend.GetLogger(s.cfg.Server.Identifier)
 	}
 	return err
+}
+
+// IdentityKey returns the running Server's identity public key.
+func (s *Server) IdentityKey() sign.PublicKey {
+	return s.identityPublicKey
+}
+
+// RotateLog rotates the log file
+// if logging to a file is enabled.
+func (s *Server) RotateLog() {
+	err := s.logBackend.Rotate()
+	if err != nil {
+		s.fatalErrCh <- fmt.Errorf("failed to rotate log file, shutting down server")
+	}
+	s.log.Notice("Log rotated.")
 }
 
 // Wait waits till the server is terminated for any reason.
@@ -107,23 +148,28 @@ func (s *Server) listenWorker(l net.Listener) {
 	defer func() {
 		s.log.Noticef("Stopping listening on: %v", addr)
 		l.Close()
-		s.wg.Done()
+		s.Done()
 	}()
 	for {
+		select {
+		case <-s.haltedCh:
+			s.log.Notice("listenWorker Shutting down")
+			return
+		default:
+		}
 		conn, err := l.Accept()
 		if err != nil {
 			if e, ok := err.(net.Error); ok && !e.Temporary() {
 				s.log.Errorf("Critical accept failure: %v", err)
 				return
 			}
+			s.log.Errorf("Accept failure: %v", err)
 			continue
 		}
 
-		s.wg.Add(1)
-
-		// FIXME(david): handle connections, remove stupid print statement.
-		//s.onConn(conn)
-		fmt.Println("conn %v", conn)
+		s.state.Go(func() {
+			s.onConn(conn)
+		})
 	}
 
 	// NOTREACHED
@@ -141,19 +187,22 @@ func (s *Server) halt() {
 	}
 
 	// Wait for all the connections to terminate.
-	s.wg.Wait()
+	s.WaitGroup.Wait()
 	close(s.fatalErrCh)
+
 	s.log.Notice("Shutdown complete.")
 	close(s.haltedCh)
 }
 
+// New returns a new Server instance parameterized with the specific
+// configuration.
 func New(cfg *config.Config) (*Server, error) {
 	s := new(Server)
 	s.cfg = cfg
 	s.geo = cfg.SphinxGeometry
+
 	s.fatalErrCh = make(chan error)
 	s.haltedCh = make(chan interface{})
-	s.wg = new(sync.WaitGroup)
 
 	// Do the early initialization and bring up logging.
 	if err := s.initDataDir(); err != nil {
@@ -168,6 +217,8 @@ func New(cfg *config.Config) (*Server, error) {
 		s.log.Warning("Unsafe Debug logging is enabled.")
 	}
 
+	pkiSignatureScheme := signSchemes.ByName(cfg.Server.PKISignatureScheme)
+
 	// Initialize the authority identity key.
 	identityPrivateKeyFile := filepath.Join(s.cfg.Server.DataDir, "identity.private.pem")
 	identityPublicKeyFile := filepath.Join(s.cfg.Server.DataDir, "identity.public.pem")
@@ -175,16 +226,16 @@ func New(cfg *config.Config) (*Server, error) {
 	var err error
 
 	if utils.BothExists(identityPrivateKeyFile, identityPublicKeyFile) {
-		s.identityPrivateKey, err = signpem.FromPrivatePEMFile(identityPrivateKeyFile, cert.Scheme)
+		s.identityPrivateKey, err = signpem.FromPrivatePEMFile(identityPrivateKeyFile, pkiSignatureScheme)
 		if err != nil {
 			return nil, err
 		}
-		s.identityPublicKey, err = signpem.FromPublicPEMFile(identityPublicKeyFile, cert.Scheme)
+		s.identityPublicKey, err = signpem.FromPublicPEMFile(identityPublicKeyFile, pkiSignatureScheme)
 		if err != nil {
 			return nil, err
 		}
 	} else if utils.BothNotExists(identityPrivateKeyFile, identityPublicKeyFile) {
-		s.identityPublicKey, s.identityPrivateKey, err = cert.Scheme.GenerateKey()
+		s.identityPublicKey, s.identityPrivateKey, err = pkiSignatureScheme.GenerateKey()
 		if err != nil {
 			return nil, err
 		}
@@ -267,16 +318,48 @@ func New(cfg *config.Config) (*Server, error) {
 		s.Shutdown()
 	}()
 
+	// Start up the state machine.
+	if s.state, err = newState(s); err != nil {
+		return nil, err
+	}
+
 	// Start up the listeners.
 	for _, v := range s.cfg.Server.Addresses {
-		l, err := net.Listen("tcp", v)
-		if err != nil {
-			s.log.Errorf("Failed to start listener '%v': %v", v, err)
-			continue
+		// parse the Address line as a URL
+		u, err := url.Parse(v)
+		if err == nil {
+			switch u.Scheme {
+			case "tcp":
+				l, err := net.Listen("tcp", u.Host)
+				if err != nil {
+					s.log.Errorf("Failed to start listener '%v': %v", v, err)
+					continue
+				}
+				s.listeners = append(s.listeners, l)
+				s.Add(1)
+				s.state.Go(func() {
+					s.listenWorker(l)
+				})
+			case "quic":
+				l, err := quic.ListenAddr(u.Host, common.GenerateTLSConfig(), nil)
+				if err != nil {
+					s.log.Errorf("Failed to start listener '%v': %v", v, err)
+					continue
+				}
+				// Wrap quic.Listener with common.QuicListener
+				// so it implements like net.Listener for a
+				// single QUIC Stream
+				ql := common.QuicListener{Listener: l}
+				s.listeners = append(s.listeners, &ql)
+				s.Add(1)
+				s.state.Go(func() {
+					s.listenWorker(&ql)
+				})
+			default:
+				s.log.Errorf("Unsupported listener scheme '%v': %v", v, err)
+				continue
+			}
 		}
-		s.listeners = append(s.listeners, l)
-		s.wg.Add(1)
-		go s.listenWorker(l)
 	}
 	if len(s.listeners) == 0 {
 		s.log.Errorf("Failed to start all listeners.")

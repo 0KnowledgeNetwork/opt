@@ -3,13 +3,16 @@ module github.com/0KnowledgeNetwork/opt
 go 1.22.3
 
 require (
+	github.com/0KnowledgeNetwork/appchain-agent/clients/go v0.0.0-20241018051950-6cb4d4598933
 	github.com/BurntSushi/toml v1.4.0
 	github.com/carlmjohnson/versioninfo v0.22.5
 	github.com/charmbracelet/log v0.4.0
 	github.com/fxamacker/cbor/v2 v2.7.0
 	github.com/katzenpost/hpqc v0.0.45
 	github.com/katzenpost/katzenpost v0.0.38
+	github.com/quic-go/quic-go v0.47.0
 	gopkg.in/op/go-logging.v1 v1.0.0-20160211212156-b2cb9fa56473
+	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (
@@ -28,6 +31,7 @@ require (
 	github.com/katzenpost/nyquist v0.0.10 // indirect
 	github.com/katzenpost/sntrup4591761 v0.0.0-20231024131303-8755eb1986b8 // indirect
 	github.com/katzenpost/sphincsplus v0.0.2-0.20240114192234-1dc77b544e31 // indirect
+	github.com/lesismal/nbio v1.5.11 // indirect
 	github.com/lucasb-eyer/go-colorful v1.2.0 // indirect
 	github.com/mattn/go-isatty v0.0.18 // indirect
 	github.com/mattn/go-pointer v0.0.1 // indirect
@@ -38,7 +42,6 @@ require (
 	github.com/oasisprotocol/deoxysii v0.0.0-20220228165953-2091330c22b7 // indirect
 	github.com/onsi/ginkgo/v2 v2.20.2 // indirect
 	github.com/quic-go/qpack v0.5.1 // indirect
-	github.com/quic-go/quic-go v0.47.0 // indirect
 	github.com/rfjakob/eme v1.1.2 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
