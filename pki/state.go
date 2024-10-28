@@ -267,7 +267,7 @@ func (s *state) update() error {
 		chDoc, err := s.chainBridge.GetDataBytes(chResponse)
 		if err == nil {
 			var doc pki.Document
-			if err = doc.UnmarshalBinary(chDoc); err != nil {
+			if err = doc.UnmarshalCertificate(chDoc); err != nil {
 				return fmt.Errorf("state: failed to unmarshal PKI document: %v", err)
 			} else {
 				s.log.Debugf("pki: ✅ Retrieved doc for epoch %v: %s", s.votingEpoch, doc.String())
@@ -355,7 +355,7 @@ func (s *state) update() error {
 		}
 
 		// register the PKI doc with the appchain
-		payload, err := doc.MarshalBinary()
+		payload, err := doc.MarshalCertificate()
 		if err != nil {
 			return fmt.Errorf("state: failed to marshal PKI document: %v", err)
 		}
@@ -386,7 +386,7 @@ func (s *state) documentForEpoch(epoch uint64) ([]byte, error) {
 	// If we have a serialized document, return it.
 	if d, ok := s.documents[epoch]; ok {
 		// XXX We should cache this
-		return d.MarshalBinary()
+		return d.MarshalCertificate()
 	}
 
 	// Otherwise, return an error based on the time.
