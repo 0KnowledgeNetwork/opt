@@ -9,7 +9,7 @@ require (
 	github.com/charmbracelet/log v0.4.0
 	github.com/fxamacker/cbor/v2 v2.7.0
 	github.com/katzenpost/hpqc v0.0.45
-	github.com/katzenpost/katzenpost v0.0.38
+	github.com/katzenpost/katzenpost v0.0.43
 	github.com/quic-go/quic-go v0.47.0
 	gopkg.in/op/go-logging.v1 v1.0.0-20160211212156-b2cb9fa56473
 	gopkg.in/yaml.v3 v3.0.1
