@@ -45,6 +45,9 @@ jobs:
       - name: Test walletshield
         run: ./tests/e2e/walletshield/test.sh
 
+      - name: Test walletshield request concurrency
+        run: ./tests/e2e/walletshield/test-concurrent-requests.sh
+
       - name: Stop walletshield
         run: |
           cd docker
