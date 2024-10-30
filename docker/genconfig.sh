@@ -1,31 +1,30 @@
 #!/bin/bash
 
-# This script is invoked by ./Makefile to generate config files for a local
-# test network using appchain pki. Variables set by the Makefile are read from
-# the environment. This is intended to be run from within the katzenpost docker
-# container.
+# This script is invoked by ./Makefile to generate a docker-compose.yml file
+# for a local test network using appchain pki. Variables set by the Makefile
+# are read from the environment.
 
 port=30000
-dir_base="/${net_name}"
-dir_out=${dir_base}
-binary_suffix=".${distro}"
-
-rm -rf ${dir_out} && mkdir -p ${dir_out}
+dir_base=${base}
+dir_out=${net}
+binary_prefix="/opt/zkn/"
 
 echo "Generating config files for local network:"
-echo "  num gateways: ${gateways}"
-echo "  num servicenodes: ${serviceNodes}"
-echo "  num mixes: ${mixes}"
-echo "  binary-suffix: ${binary_suffix}"
-echo "  distro: ${distro}"
-echo "  dir-base: ${dir_base}"
-echo "  dir-out: ${dir_out}"
+echo "  num_gateways: ${num_gateways}"
+echo "  num_servicenodes: ${num_servicenodes}"
+echo "  num_mixes: ${num_mixes}"
 
-gencfg="../genconfig/cmd/genconfig/genconfig \
-  -input ./network.yml \
-  -binary-suffix ${binary_suffix} \
-  -dir-base ${dir_base} \
-  -dir-out ${dir_out}"
+gencfg="${docker} run ${docker_args} --rm \
+  --volume $(readlink -f ./network.yml):/tmp/network.yml \
+  --volume $(readlink -f ${dir_out}):${dir_base} \
+  ${docker_image} \
+  ${binary_prefix}genconfig \
+    -input /tmp/network.yml \
+    -binary-prefix ${binary_prefix} \
+    -dir-base ${dir_base} \
+    -dir-out ${dir_base}"
+
+echo "genconfig: ${gencfg}"
 
 cat <<EOF > ${dir_out}/prometheus.yml
 scrape_configs:
@@ -38,9 +37,9 @@ EOF
 cat <<EOF > ${dir_out}/docker-compose.yml
 x-common-service: &common-service
   restart: "no"
-  image: katzenpost-${distro}_base
+  image: ${docker_image}
   volumes:
-    - ./:${dir_base}
+    - ${dir_out}:${dir_base}
   network_mode: host
 
 services:
@@ -49,7 +48,7 @@ services:
     restart: "no"
     image: docker.io/prom/prometheus
     volumes:
-      - ./:${dir_base}
+      - ${dir_out}:${dir_base}
     command: --config.file="${dir_base}/prometheus.yml"
     network_mode: host
 
@@ -67,21 +66,17 @@ function gencfg_node () {
   cat <<EOF >> ${dir_out}/docker-compose.yml
   ${id}-auth:
     <<: *common-service
-    command: ${dir_base}/pki${binary_suffix} -f ${dir_base}/${id}-auth/authority.toml
+    command: ${binary_prefix}pki -f ${dir_base}/${id}-auth/authority.toml
 
   ${id}:
     <<: *common-service
-    command: ${dir_base}/server${binary_suffix} -f ${dir_base}/${id}/katzenpost.toml
+    command: ${binary_prefix}server -f ${dir_base}/${id}/katzenpost.toml
     depends_on:
       - ${id}-auth
 
 EOF
 }
 
-for i in $(seq 1 ${gateways}); do gencfg_node gateway ${i}; done
-for i in $(seq 1 ${serviceNodes}); do gencfg_node servicenode ${i}; done
-for i in $(seq 1 ${mixes}); do gencfg_node mix ${i}; done
-
-# FIXME: client*/config.toml generated with, to include, gateway('s auth)
-# ${gc} -type client1
-# ${gc} -type client2
+for i in $(seq 1 ${num_gateways}); do gencfg_node gateway ${i}; done
+for i in $(seq 1 ${num_servicenodes}); do gencfg_node servicenode ${i}; done
+for i in $(seq 1 ${num_mixes}); do gencfg_node mix ${i}; done
