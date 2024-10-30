@@ -1,8 +1,8 @@
 FROM ubuntu:latest AS builder
 
-ARG VERSION_GO=1.22.3
-ARG KATZENPOST_DIR=/tmp/katzenpost.opt
 ARG ENABLE_WARPED_EPOCH=true
+ARG KATZENPOST_DIR=/tmp/katzenpost.opt
+ARG VERSION_GO=1.22.3
 
 ENV GOROOT=/usr/local/go
 ENV PATH=$GOROOT/bin:$PATH
@@ -62,6 +62,8 @@ RUN --mount=type=cache,target="${GOCACHE}" \
 
 FROM ubuntu:latest AS node
 
-COPY --from=builder /dest /opt/zkn
+ARG DIR_BIN=/opt/zkn
+
+COPY --from=builder /dest ${DIR_BIN}
 
 CMD ["/bin/bash"]

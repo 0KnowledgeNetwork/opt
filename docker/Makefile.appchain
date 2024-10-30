@@ -1,12 +1,14 @@
 net ?= /tmp/appchain-mixnet
-base := /mixnet
+dir_base := /mixnet
+dir_bin := /opt/zkn
 docker_image ?= zkn/node:latest
-docker_user ?= $(shell [ "$(docker)" = "podman" ] && echo 0:0 || echo $${SUDO_UID:-$$(id -u)}:$${SUDO_GID:-$$(id -g)})
 docker := $(shell if which podman|grep -q .; then echo podman; else echo docker; fi)
+docker_user ?= $(shell [ "$(docker)" = "podman" ] && echo 0:0 || echo $${SUDO_UID:-$$(id -u)}:$${SUDO_GID:-$$(id -g)})
 docker_compose ?= DOCKER_USER=$(docker_user) $(shell if which podman|grep -q .; then echo DOCKER_HOST="unix://$$XDG_RUNTIME_DIR/podman/podman.sock"; fi) docker compose
 docker_args := --user ${docker_user}
-docker_run := $(docker) run $(docker_args) --network=host --rm --volume $(shell readlink -f $(net)):$(base)
+docker_run := $(docker) run $(docker_args) --network=host --rm --volume $(shell readlink -f $(net)):$(dir_base)
 
+warped?=true
 num_mixes=3
 num_gateways=1
 num_servicenodes=1
@@ -18,7 +20,12 @@ $(net):
 
 image: $(net)/image.stamp
 $(net)/image.stamp: $(net)
-	$(docker) build -t $(docker_image) -f ./node/Dockerfile ../
+	$(docker) build \
+		--build-arg DIR_BIN=$(dir_bin) \
+		--build-arg ENABLE_WARPED_EPOCH=$(warped) \
+		--file ./node/Dockerfile \
+		--tag $(docker_image) \
+		../
 	touch $(net)/image.stamp
 
 config: $(net)/docker-compose.yml
@@ -31,11 +38,11 @@ $(net)/run.stamp:
 	touch $(net)/run.stamp
 
 wait: $(net)/run.stamp
-	$(docker_run) $(docker_image) /opt/zkn/fetch -f $(base)/client/client.toml
+	$(docker_run) $(docker_image) $(dir_bin)/fetch -f $(dir_base)/client/client.toml
 
 probe: $(net)/run.stamp
-	$(docker_run) $(docker_image) /opt/zkn/walletshield \
-		-config $(base)/client2/client.toml \
+	$(docker_run) $(docker_image) $(dir_bin)/walletshield \
+		-config $(dir_base)/client2/client.toml \
 		-log_level DEBUG \
 		-probe \
 		-probe_count 1
@@ -48,4 +55,4 @@ stop:
 .PHONY: clean
 clean: stop
 	$(docker) rmi $(docker_image)
-	rm -fv $(net)/image.stamp
+	rm -rfv $(net)

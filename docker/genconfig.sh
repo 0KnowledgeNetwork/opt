@@ -1,15 +1,16 @@
-#!/bin/bash
+#!/bin/bash -e
 
 # This script is invoked by ./Makefile to generate a docker-compose.yml file
 # for a local test network using appchain pki. Variables set by the Makefile
 # are read from the environment.
 
 port=30000
-dir_base=${base}
 dir_out=${net}
-binary_prefix="/opt/zkn/"
 
 echo "Generating config files for local network:"
+echo "  dir_base: ${dir_base}"
+echo "  dir_bin: ${dir_bin}"
+echo "  dir_out: ${dir_out}"
 echo "  num_gateways: ${num_gateways}"
 echo "  num_servicenodes: ${num_servicenodes}"
 echo "  num_mixes: ${num_mixes}"
@@ -18,9 +19,9 @@ gencfg="${docker} run ${docker_args} --rm \
   --volume $(readlink -f ./network.yml):/tmp/network.yml \
   --volume $(readlink -f ${dir_out}):${dir_base} \
   ${docker_image} \
-  ${binary_prefix}genconfig \
+  ${dir_bin}/genconfig \
     -input /tmp/network.yml \
-    -binary-prefix ${binary_prefix} \
+    -binary-prefix ${dir_bin}/ \
     -dir-base ${dir_base} \
     -dir-out ${dir_base}"
 
@@ -66,11 +67,11 @@ function gencfg_node () {
   cat <<EOF >> ${dir_out}/docker-compose.yml
   ${id}-auth:
     <<: *common-service
-    command: ${binary_prefix}pki -f ${dir_base}/${id}-auth/authority.toml
+    command: ${dir_bin}/pki -f ${dir_base}/${id}-auth/authority.toml
 
   ${id}:
     <<: *common-service
-    command: ${binary_prefix}server -f ${dir_base}/${id}/katzenpost.toml
+    command: ${dir_bin}/server -f ${dir_base}/${id}/katzenpost.toml
     depends_on:
       - ${id}-auth
 
