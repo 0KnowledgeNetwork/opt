@@ -39,6 +39,7 @@ cat <<EOF > ${dir_out}/docker-compose.yml
 x-common-service: &common-service
   restart: "no"
   image: ${docker_image}
+  user: ${docker_user}
   volumes:
     - ${dir_out}:${dir_base}
   network_mode: host
