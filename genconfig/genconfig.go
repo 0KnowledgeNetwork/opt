@@ -369,6 +369,21 @@ func (s *katzenpost) genNodeConfig(identifier string, isGateway bool, isServiceN
 				cfg.ServiceNode.CBORPluginKaetzchen = append(cfg.ServiceNode.CBORPluginKaetzchen, proxyCfg)
 				s.hasProxy = true
 			}
+
+			// 0KN JSON RPC - HTTP Proxy
+			httpProxyCfg := &sConfig.CBORPluginKaetzchen{
+				Capability:     "http_proxy",
+				Endpoint:       "http_proxy",
+				Command:        s.binPrefix + "http_proxy" + s.binSuffix,
+				MaxConcurrency: 1,
+				Disable:        false,
+				Config: map[string]interface{}{
+					"config":  s.binPrefix + "http_proxy_config.toml",
+					"log_dir": s.baseDir + "/" + cfg.Server.Identifier,
+				},
+			}
+			cfg.ServiceNode.CBORPluginKaetzchen = append(cfg.ServiceNode.CBORPluginKaetzchen, httpProxyCfg)
+
 			cfg.Debug.NumKaetzchenWorkers = 4
 		}
 
