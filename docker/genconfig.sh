@@ -11,6 +11,8 @@ echo "Generating config files for local network:"
 echo "  dir_base: ${dir_base}"
 echo "  dir_bin: ${dir_bin}"
 echo "  dir_out: ${dir_out}"
+echo "  docker_image: ${docker_image}"
+echo "  docker_image_agent: ${docker_image_agent}"
 echo "  num_gateways: ${num_gateways}"
 echo "  num_servicenodes: ${num_servicenodes}"
 echo "  num_mixes: ${num_mixes}"
@@ -66,9 +68,25 @@ function gencfg_node () {
   port=$((port+2))
 
   cat <<EOF >> ${dir_out}/docker-compose.yml
+  ${id}-agent:
+    <<: *common-service
+    image: ${docker_image_agent}
+    command: >
+      pnpm run agent \
+        --ipfs \
+        --ipfs-data ${dir_base}/ipfs-data \
+        --listen \
+        --key ${dir_base}/${id}-auth/appchain.key \
+        --socket ${dir_base}/${id}-auth/appchain.sock \
+        --socket-format cbor \
+        --tx-status-retries 20 \
+        --debug
+
   ${id}-auth:
     <<: *common-service
     command: ${dir_bin}/pki -f ${dir_base}/${id}-auth/authority.toml
+    depends_on:
+      - ${id}-agent
 
   ${id}:
     <<: *common-service

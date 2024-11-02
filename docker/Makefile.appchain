@@ -2,6 +2,7 @@ net ?= /tmp/appchain-mixnet
 dir_base := /mixnet
 dir_bin := /opt/zkn
 docker_image ?= zkn/node:latest
+docker_image_agent ?= zkn/agent:latest
 docker := $(shell if which podman|grep -q .; then echo podman; else echo docker; fi)
 docker_user ?= $(shell [ "$(docker)" = "podman" ] && echo 0:0 || echo $${SUDO_UID:-$$(id -u)}:$${SUDO_GID:-$$(id -g)})
 docker_compose ?= DOCKER_USER=$(docker_user) $(shell if which podman|grep -q .; then echo DOCKER_HOST="unix://$$XDG_RUNTIME_DIR/podman/podman.sock"; fi) docker compose
@@ -31,7 +32,7 @@ $(net)/image.stamp: $(net)
 	touch $(net)/image.stamp
 
 config: $(net)/docker-compose.yml
-$(net)/docker-compose.yml: $(net) $(net)/image.stamp
+$(net)/docker-compose.yml: genconfig.sh $(net) $(net)/image.stamp
 	./genconfig.sh
 
 start: config image $(net)/run.stamp
