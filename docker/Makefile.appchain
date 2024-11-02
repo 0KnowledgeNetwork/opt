@@ -13,6 +13,8 @@ num_mixes=3
 num_gateways=1
 num_servicenodes=1
 
+probe_count ?= 1
+
 export
 
 $(net):
@@ -45,7 +47,7 @@ probe: $(net)/run.stamp
 		-config $(dir_base)/client2/client.toml \
 		-log_level DEBUG \
 		-probe \
-		-probe_count 1
+		-probe_count $(probe_count)
 
 .PHONY: stop
 stop:
