@@ -61,11 +61,19 @@ EOF
 function gencfg_node () {
   type=${1}
   id=${type}${2}
+  metrics="127.0.0.1:$((port+2))"
 
-  ${gencfg} -port ${port} -type ${type} -identifier ${id} || exit 1
+  ${gencfg} \
+    -type ${type} \
+    -identifier ${id} \
+    -metrics ${metrics} \
+    -port ${port} \
+    || exit 1
 
-  echo "    - 127.0.0.1:${port}" >> ${dir_out}/prometheus.yml
-  port=$((port+2))
+  echo "    - ${metrics}" >> ${dir_out}/prometheus.yml
+
+  # increment port for the next node
+  port=$((port+10))
 
   cat <<EOF >> ${dir_out}/docker-compose.yml
   ${id}-agent:
