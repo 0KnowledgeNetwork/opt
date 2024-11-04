@@ -1,7 +1,5 @@
 // related katzenpost:authority/voting/server/state.go
 
-// 2024-07-02 This file is an iterative shim to be replaced with AppChain interactions.
-
 package main
 
 import (
@@ -29,13 +27,25 @@ const (
 	publicKeyHashSize = 32
 )
 
-// TODO: retrieve epoch schedule from appchain
+// NOTE: 2024-11-01:
+// Parts of katzenpost use MixPublishDeadline and PublishConsensusDeadline defined in
+// katzenpost:authority/voting/server/state.go
+// So, we preserve that aspect of the epoch schedule.
 var (
-	DescriptorUploadDeadline = epochtime.Period * 2 / 4
-	DocGenerationDeadline    = epochtime.Period * 3 / 4
-	errGone                  = errors.New("pki: Requested epoch will never get a Document")
-	errNotYet                = errors.New("pki: Document is not ready yet")
+	MixPublishDeadline       = epochtime.Period / 8
+	AuthorityVoteDeadline    = MixPublishDeadline + epochtime.Period/8
+	AuthorityRevealDeadline  = AuthorityVoteDeadline + epochtime.Period/8
+	AuthorityCertDeadline    = AuthorityRevealDeadline + epochtime.Period/8
+	PublishConsensusDeadline = AuthorityCertDeadline + epochtime.Period/8
+	errGone                  = errors.New("authority: Requested epoch will never get a Document")
+	errNotYet                = errors.New("authority: Document is not ready yet")
 	errInvalidTopology       = errors.New("authority: Invalid Topology")
+)
+
+// Custom epoch schedule for appchain PKI
+var (
+	DescriptorUploadDeadline = MixPublishDeadline
+	DocGenerationDeadline    = epochtime.Period * 7 / 8
 )
 
 type state struct {
@@ -350,6 +360,7 @@ func (s *state) update() error {
 			return errGone
 		}
 
+		// FIXME: retreive doc from appchain if it was registered while being generated here
 		if err := cacheLocalDoc(doc); err != nil {
 			return err
 		}
