@@ -1,7 +1,7 @@
 FROM ubuntu:latest AS builder
 
 ARG ENABLE_WARPED_EPOCH=true
-ARG KATZENPOST_DIR=/tmp/katzenpost.opt
+ARG KATZENPOST_DIR=/src/katzenpost
 ARG VERSION_GO=1.22.3
 
 ENV GOROOT=/usr/local/go
@@ -31,8 +31,8 @@ COPY . /src
 # Build Katzenpost components
 RUN --mount=type=cache,target="${GOCACHE}" \
   mkdir /dest \
-  # clone 0KN opt-specific katzenpost branch
-  && make katzenpost_dir=${KATZENPOST_DIR} -C /src/docker clone-katzenpost \
+  # clone 0KN opt-specific katzenpost branch, if one does not exist
+  && if [ ! -d "${KATZENPOST_DIR}" ]; then make katzenpost_dir=${KATZENPOST_DIR} -C /src/docker clone-katzenpost ; fi \
   # a function to build and move the binary
   && build() { cd ${KATZENPOST_DIR}/$1 ; b=$(basename $1) ; go build ${GO_BUILD_OPTS} ; chmod u+x $b ; mv $b /dest/$2; } \
   # clients
