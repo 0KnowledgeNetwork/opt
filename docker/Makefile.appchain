@@ -35,6 +35,7 @@ config: $(net)/docker-compose.yml
 $(net)/docker-compose.yml: genconfig.sh $(net) $(net)/image.stamp
 	./genconfig.sh
 
+_start: $(net)/run.stamp
 start: config image $(net)/run.stamp
 $(net)/run.stamp:
 	cd $(net); $(docker_compose) up --remove-orphans -d; $(docker) compose top
