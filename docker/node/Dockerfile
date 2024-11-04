@@ -10,11 +10,14 @@ ENV GOCACHE=/root/.cache/go-build
 ENV GO_BUILD_OPTS="-trimpath -ldflags=-buildid= -ldflags=-X=github.com/katzenpost/katzenpost/core/epochtime.WarpedEpoch=${ENABLE_WARPED_EPOCH}"
 
 # Install build dependencies
-RUN apt-get update && apt-get install -y \
+RUN \
+  --mount=type=cache,target=/var/cache/apt \
+  --mount=type=cache,target=/var/lib/apt \
+  apt-get update && apt-get install -y --no-install-recommends \
   build-essential \
+  ca-certificates \
   git \
-  wget \
-  && rm -rf /var/lib/apt/lists/*
+  wget
 
 # Install Go
 RUN f=go${VERSION_GO}.linux-amd64.tar.gz \
