@@ -1,8 +1,5 @@
 name: build
 on:
-  push:
-    branches:
-      - main
   pull_request:
     branches:
       - '**'
@@ -20,6 +17,15 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: ${{ matrix.go-version }}
+
+      - name: Build everything to ensure it can be built
+        run: |
+          make all
 
       - name: Configure podman socket
         run: |
