@@ -58,7 +58,6 @@ RUN --mount=type=cache,target="${GOCACHE}" \
   && build genconfig/cmd/genconfig genconfig \
   # servicenode plugin: http_proxy
   && build server_plugins/cbor_plugins/http_proxy/cmd/http_proxy http_proxy \
-  && cp /src/server_plugins/cbor_plugins/http_proxy/http_proxy_config.toml /dest/ \
   # clients
   && build apps/walletshield walletshield
 
