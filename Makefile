@@ -9,14 +9,14 @@ genconfig:
 	cd genconfig/cmd/genconfig && go build
 
 http_proxy:
-	cd server_plugins/cbor_plugins/http_proxy/cmd/http_proxy; go build
+	cd server_plugins/cbor_plugins/http_proxy/cmd/http_proxy && go build
 
 pki:
 	make -C pki
 
 clean:
 	make -C pki clean
+	make -C apps/walletshield clean
 	rm -f \
-		apps/walletshield/walletshield \
 		genconfig/cmd/genconfig/genconfig \
 		server_plugins/cbor_plugins/http_proxy/cmd/http_proxy/http_proxy
