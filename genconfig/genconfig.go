@@ -716,7 +716,6 @@ func Genconfig(gi GenconfigInput) error {
 	}
 
 	os.Mkdir(s.outDir, 0700)
-	os.Mkdir(filepath.Join(s.outDir, s.baseDir), 0700)
 
 	if *voting {
 		// Generate the voting authority configurations
