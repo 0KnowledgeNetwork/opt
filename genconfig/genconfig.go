@@ -378,11 +378,14 @@ func (s *katzenpost) genNodeConfig(identifier string, isGateway bool, isServiceN
 				MaxConcurrency: 1,
 				Disable:        false,
 				Config: map[string]interface{}{
-					"config":  s.binPrefix + "http_proxy_config.toml",
+					"config":  s.baseDir + "/" + cfg.Server.Identifier + "/http_proxy_config.toml",
 					"log_dir": s.baseDir + "/" + cfg.Server.Identifier,
 				},
 			}
 			cfg.ServiceNode.CBORPluginKaetzchen = append(cfg.ServiceNode.CBORPluginKaetzchen, httpProxyCfg)
+			// create empty default http_proxy_config.toml file
+			httpProxyConfigFile := filepath.Join(s.outDir, cfg.Server.Identifier, "http_proxy_config.toml")
+			saveFileContents(httpProxyConfigFile, "[Networks]\n")
 
 			cfg.Debug.NumKaetzchenWorkers = 4
 		}
@@ -845,6 +848,19 @@ func saveCfg(cfg interface{}, outDir string) error {
 	// Serialize the descriptor.
 	enc := toml.NewEncoder(f)
 	return enc.Encode(cfg)
+}
+
+func saveFileContents(filename string, contents string) error {
+	log.Printf("writing %s", filename)
+	f, err := os.Create(filename)
+	if err != nil {
+		return fmt.Errorf("os.Create(%s) failed: %s", filename, err)
+	}
+	defer f.Close()
+	if _, err := f.WriteString(contents); err != nil {
+		return fmt.Errorf("f.WriteString() failed: %s", err)
+	}
+	return nil
 }
 
 func cfgIdKey(cfg interface{}, outDir string) sign.PublicKey {
