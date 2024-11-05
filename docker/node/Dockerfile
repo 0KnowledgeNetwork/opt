@@ -1,6 +1,6 @@
 FROM ubuntu:latest AS builder
 
-ARG ENABLE_WARPED_EPOCH=true
+ARG ENABLE_WARPED_EPOCH=false
 ARG KATZENPOST_DIR=/src/katzenpost
 ARG VERSION_GO=1.22.3
 
@@ -56,7 +56,7 @@ RUN --mount=type=cache,target="${GOCACHE}" \
   && build pki pki \
   # genconfig
   && build genconfig/cmd/genconfig genconfig \
-  # servicenode plugin: http_proxy
+  # servicenode plugins
   && build server_plugins/cbor_plugins/http_proxy/cmd/http_proxy http_proxy \
   # clients
   && build apps/walletshield walletshield
