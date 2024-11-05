@@ -18,6 +18,15 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Setup Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: ${{ matrix.go-version }}
+
+      - name: Build everything to ensure it can be built
+        run: |
+          make all
+
       - name: Configure podman socket
         run: |
           sudo systemctl restart dbus && sudo systemctl enable --now podman.socket
