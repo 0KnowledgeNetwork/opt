@@ -1,6 +1,6 @@
 # Example network configuration file; configures local test network using appchain pki
 build_datetime: '1728353595'
-kp_client_debug_DisableDecoyTraffic: false
+kp_client_debug_DisableDecoyTraffic: true
 kp_client_debug_EnableTimeSync: false
 kp_client_debug_InitialMaxPKIRetrievalDelay: 0
 kp_client_debug_PollingInterval: 0

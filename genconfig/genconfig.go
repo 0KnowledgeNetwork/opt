@@ -51,6 +51,7 @@ type GenconfigInput struct {
 	addrBind         string
 	baseDir          string
 	basePort         int
+	binPrefix        string
 	binSuffix        string
 	cfgType          string
 	identifier       string
@@ -64,6 +65,7 @@ type GenconfigInput struct {
 type katzenpost struct {
 	baseDir   string
 	outDir    string
+	binPrefix string
 	binSuffix string
 	logLevel  string
 	logWriter io.Writer
@@ -313,7 +315,7 @@ func (s *katzenpost) genNodeConfig(identifier string, isGateway bool, isServiceN
 		spoolCfg := &sConfig.CBORPluginKaetzchen{
 			Capability:     "spool",
 			Endpoint:       "+spool",
-			Command:        s.baseDir + "/memspool" + s.binSuffix,
+			Command:        s.binPrefix + "memspool" + s.binSuffix,
 			MaxConcurrency: 1,
 			Config: map[string]interface{}{
 				"data_store": s.baseDir + "/" + cfg.Server.Identifier + "/memspool.storage",
@@ -325,7 +327,7 @@ func (s *katzenpost) genNodeConfig(identifier string, isGateway bool, isServiceN
 			mapCfg := &sConfig.CBORPluginKaetzchen{
 				Capability:     "pigeonhole",
 				Endpoint:       "+pigeonhole",
-				Command:        s.baseDir + "/pigeonhole" + s.binSuffix,
+				Command:        s.binPrefix + "pigeonhole" + s.binSuffix,
 				MaxConcurrency: 1,
 				Config: map[string]interface{}{
 					"db":      s.baseDir + "/" + cfg.Server.Identifier + "/map.storage",
@@ -338,7 +340,7 @@ func (s *katzenpost) genNodeConfig(identifier string, isGateway bool, isServiceN
 				pandaCfg := &sConfig.CBORPluginKaetzchen{
 					Capability:     "panda",
 					Endpoint:       "+panda",
-					Command:        s.baseDir + "/panda_server" + s.binSuffix,
+					Command:        s.binPrefix + "panda_server" + s.binSuffix,
 					MaxConcurrency: 1,
 					Config: map[string]interface{}{
 						"fileStore": s.baseDir + "/" + cfg.Server.Identifier + "/panda.storage",
@@ -355,7 +357,7 @@ func (s *katzenpost) genNodeConfig(identifier string, isGateway bool, isServiceN
 				proxyCfg := &sConfig.CBORPluginKaetzchen{
 					Capability:     "http",
 					Endpoint:       "+http",
-					Command:        s.baseDir + "/proxy_server" + s.binSuffix,
+					Command:        s.binPrefix + "proxy_server" + s.binSuffix,
 					MaxConcurrency: 1,
 					Config: map[string]interface{}{
 						// allow connections to localhost:4242
@@ -367,6 +369,24 @@ func (s *katzenpost) genNodeConfig(identifier string, isGateway bool, isServiceN
 				cfg.ServiceNode.CBORPluginKaetzchen = append(cfg.ServiceNode.CBORPluginKaetzchen, proxyCfg)
 				s.hasProxy = true
 			}
+
+			// 0KN JSON RPC - HTTP Proxy
+			httpProxyCfg := &sConfig.CBORPluginKaetzchen{
+				Capability:     "http_proxy",
+				Endpoint:       "http_proxy",
+				Command:        s.binPrefix + "http_proxy" + s.binSuffix,
+				MaxConcurrency: 1,
+				Disable:        false,
+				Config: map[string]interface{}{
+					"config":  s.baseDir + "/" + cfg.Server.Identifier + "/http_proxy_config.toml",
+					"log_dir": s.baseDir + "/" + cfg.Server.Identifier,
+				},
+			}
+			cfg.ServiceNode.CBORPluginKaetzchen = append(cfg.ServiceNode.CBORPluginKaetzchen, httpProxyCfg)
+			// create empty default http_proxy_config.toml file
+			httpProxyConfigFile := filepath.Join(s.outDir, cfg.Server.Identifier, "http_proxy_config.toml")
+			saveFileContents(httpProxyConfigFile, "[Networks]\n")
+
 			cfg.Debug.NumKaetzchenWorkers = 4
 		}
 
@@ -454,7 +474,7 @@ func (s *katzenpost) genAuthorizedNodes() ([]*vConfig.Node, []*vConfig.Node, []*
 	for _, nodeCfg := range s.nodeConfigs {
 		node := &vConfig.Node{
 			Identifier:           nodeCfg.Server.Identifier,
-			IdentityPublicKeyPem: filepath.Join("../", nodeCfg.Server.Identifier, "identity.public.pem"),
+			IdentityPublicKeyPem: filepath.Join(s.outDir, nodeCfg.Server.Identifier, "identity.public.pem"),
 		}
 		if nodeCfg.Server.IsGatewayNode {
 			gateways = append(gateways, node)
@@ -483,6 +503,7 @@ func ParseFlags() GenconfigInput {
 	flag.StringVar(&gi.addr, "address", addr, "Address to publish (and bind to if -address-bind not set)")
 	flag.StringVar(&gi.addrBind, "address-bind", "", "Address to bind to")
 	flag.StringVar(&gi.baseDir, "dir-base", "", "Absolute path as installation directory in config files (default -dir-out)")
+	flag.StringVar(&gi.binPrefix, "binary-prefix", "", "Prefix for binaries")
 	flag.StringVar(&gi.binSuffix, "binary-suffix", "", "Suffix for binaries")
 	flag.StringVar(&gi.cfgType, "type", "", "Type of config to generate: mix, gateway, servicenode, client1, client2")
 	flag.StringVar(&gi.identifier, "identifier", "", "Node identifier; lowercase alphanumeric with 4 to 20 characters (default -type)")
@@ -515,6 +536,7 @@ func Genconfig(gi GenconfigInput) error {
 	addrBind := &gi.addrBind
 	baseDir := &gi.baseDir
 	basePort := &gi.basePort
+	binPrefix := &gi.binPrefix
 	binSuffix := &gi.binSuffix
 	cfgType := &gi.cfgType
 	identifier := &gi.identifier
@@ -617,6 +639,7 @@ func Genconfig(gi GenconfigInput) error {
 
 	s.baseDir = *baseDir
 	s.outDir = *outDir
+	s.binPrefix = *binPrefix
 	s.binSuffix = *binSuffix
 	s.basePort = uint16(*basePort)
 	s.lastPort = s.basePort + 1
@@ -696,7 +719,6 @@ func Genconfig(gi GenconfigInput) error {
 	}
 
 	os.Mkdir(s.outDir, 0700)
-	os.Mkdir(filepath.Join(s.outDir, s.baseDir), 0700)
 
 	if *voting {
 		// Generate the voting authority configurations
@@ -826,6 +848,19 @@ func saveCfg(cfg interface{}, outDir string) error {
 	// Serialize the descriptor.
 	enc := toml.NewEncoder(f)
 	return enc.Encode(cfg)
+}
+
+func saveFileContents(filename string, contents string) error {
+	log.Printf("writing %s", filename)
+	f, err := os.Create(filename)
+	if err != nil {
+		return fmt.Errorf("os.Create(%s) failed: %s", filename, err)
+	}
+	defer f.Close()
+	if _, err := f.WriteString(contents); err != nil {
+		return fmt.Errorf("f.WriteString() failed: %s", err)
+	}
+	return nil
 }
 
 func cfgIdKey(cfg interface{}, outDir string) sign.PublicKey {
