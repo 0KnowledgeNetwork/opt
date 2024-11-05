@@ -105,6 +105,9 @@ function gencfg_node () {
 EOF
 }
 
-for i in $(seq 1 ${num_gateways}); do gencfg_node gateway ${i}; done
-for i in $(seq 1 ${num_servicenodes}); do gencfg_node servicenode ${i}; done
 for i in $(seq 1 ${num_mixes}); do gencfg_node mix ${i}; done
+for i in $(seq 1 ${num_gateways}); do gencfg_node gateway ${i}; done
+for i in $(seq 1 ${num_servicenodes}); do
+  gencfg_node servicenode ${i}
+  cp ../server_plugins/cbor_plugins/http_proxy/http_proxy_config.toml ${dir_out}/servicenode${i}/http_proxy_config.toml
+done
