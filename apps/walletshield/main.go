@@ -32,6 +32,9 @@ import (
 var (
 	timeout          = time.Second * 45
 	ProxyHTTPService = "http_proxy"
+
+	// Note: UserForwardPayloadLength should match the same value passed to genconfig.
+	UserForwardPayloadLength = 30000
 )
 
 func sendRequest(thin *thin.ThinClient, payload []byte) ([]byte, error) {
@@ -173,6 +176,15 @@ func (s *Server) Handler(w http.ResponseWriter, req *http.Request) {
 	blob, err := cbor.Marshal(request)
 	if err != nil {
 		panic(err)
+	}
+
+	// FIXME: resolve with multi-packet transimssion to transcend payload size limitation
+	// While better solution is developing, pre-emptively reject oversized payloads
+	size := len(blob)
+	if size > UserForwardPayloadLength {
+		s.log.Errorf("(WIP) Rejecting message with oversized payload: %d > %d bytes", size, UserForwardPayloadLength)
+		http.Error(w, "custom 500", http.StatusInternalServerError)
+		return
 	}
 
 	rawReply, err := sendRequest(s.thin, blob)
