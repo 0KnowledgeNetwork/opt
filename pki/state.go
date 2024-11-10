@@ -429,6 +429,50 @@ func (s *state) documentForEpoch(epoch uint64) ([]byte, error) {
 	// NOTREACHED
 }
 
+func (st *state) chNodesRegister(v *config.Node, isGatewayNode bool, isServiceNode bool) {
+	pkiSignatureScheme := signSchemes.ByName(st.s.cfg.Server.PKISignatureScheme)
+
+	var err error
+	var identityPublicKey sign.PublicKey
+	if filepath.IsAbs(v.IdentityPublicKeyPem) {
+		identityPublicKey, err = signpem.FromPublicPEMFile(v.IdentityPublicKeyPem, pkiSignatureScheme)
+		if err != nil {
+			panic(err)
+		}
+	} else {
+		pemFilePath := filepath.Join(st.s.cfg.Server.DataDir, v.IdentityPublicKeyPem)
+		identityPublicKey, err = signpem.FromPublicPEMFile(pemFilePath, pkiSignatureScheme)
+		if err != nil {
+			panic(err)
+		}
+	}
+
+	payload, err := identityPublicKey.MarshalBinary()
+	if err != nil {
+		st.log.Errorf("failed to marshal identityPublicKey: %v", err)
+		return
+	}
+	pk := hash.Sum256From(identityPublicKey)
+	chCommand := fmt.Sprintf(
+		chainbridge.Cmd_nodes_register,
+		v.Identifier,
+		chainbridge.Bool2int(isGatewayNode),
+		chainbridge.Bool2int(isServiceNode))
+	chResponse, err := st.chainBridge.Command(chCommand, payload)
+	st.log.Debugf("ChainBridge response (%s): %+v", chCommand, chResponse)
+	if err != nil {
+		st.log.Errorf("ChainBridge command error: %v", err)
+		return
+	}
+	if chResponse.Error != "" && chResponse.Error != chainbridge.Err_nodes_alreadyRegistered {
+		st.log.Errorf("ChainBridge response error: %v", chResponse.Error)
+		return
+	}
+
+	st.registeredLocalNodes[pk] = true
+	st.log.Noticef("Local node registered with Identifier '%s', Identity key hash '%x'", v.Identifier, pk)
+}
+
 func newState(s *Server) (*state, error) {
 	st := new(state)
 	st.s = s
@@ -446,60 +490,16 @@ func newState(s *Server) (*state, error) {
 		chainBridgeLogger.Fatalf("Error: %v", err)
 	}
 
-	pkiSignatureScheme := signSchemes.ByName(s.cfg.Server.PKISignatureScheme)
-
-	registerNode := func(v *config.Node, isGatewayNode bool, isServiceNode bool) {
-		var identityPublicKey sign.PublicKey
-		var err error
-		if filepath.IsAbs(v.IdentityPublicKeyPem) {
-			identityPublicKey, err = signpem.FromPublicPEMFile(v.IdentityPublicKeyPem, pkiSignatureScheme)
-			if err != nil {
-				panic(err)
-			}
-		} else {
-			pemFilePath := filepath.Join(s.cfg.Server.DataDir, v.IdentityPublicKeyPem)
-			identityPublicKey, err = signpem.FromPublicPEMFile(pemFilePath, pkiSignatureScheme)
-			if err != nil {
-				panic(err)
-			}
-		}
-
-		payload, err := identityPublicKey.MarshalBinary()
-		if err != nil {
-			st.log.Errorf("failed to marshal identityPublicKey: %v", err)
-			return
-		}
-		pk := hash.Sum256From(identityPublicKey)
-		chCommand := fmt.Sprintf(
-			chainbridge.Cmd_nodes_register,
-			v.Identifier,
-			chainbridge.Bool2int(isGatewayNode),
-			chainbridge.Bool2int(isServiceNode))
-		chResponse, err := st.chainBridge.Command(chCommand, payload)
-		s.log.Debugf("ChainBridge response (%s): %+v", chCommand, chResponse)
-		if err != nil {
-			st.log.Errorf("ChainBridge command error: %v", err)
-			return
-		}
-		if chResponse.Error != "" && chResponse.Error != chainbridge.Err_nodes_alreadyRegistered {
-			st.log.Errorf("ChainBridge response error: %v", chResponse.Error)
-			return
-		}
-
-		st.registeredLocalNodes[pk] = true
-		s.log.Noticef("Local node registered with Identifier '%s', Identity key hash '%x'", v.Identifier, pk)
-	}
-
 	// Initialize the authorized peer tables.
 	st.registeredLocalNodes = make(map[[publicKeyHashSize]byte]bool)
 	for _, v := range st.s.cfg.Mixes {
-		registerNode(v, false, false)
+		st.chNodesRegister(v, false, false)
 	}
 	for _, v := range st.s.cfg.GatewayNodes {
-		registerNode(v, true, false)
+		st.chNodesRegister(v, true, false)
 	}
 	for _, v := range st.s.cfg.ServiceNodes {
-		registerNode(v, false, true)
+		st.chNodesRegister(v, false, true)
 	}
 
 	if len(st.registeredLocalNodes) > 1 {
