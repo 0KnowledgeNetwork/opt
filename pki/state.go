@@ -288,15 +288,7 @@ func (s *state) update() error {
 		// according to the appchain, there's not yet a PKI doc for the epoch, so generate it
 
 		// get number of descriptors for the given epoch from appchain
-		chCommand = fmt.Sprintf(chainbridge.Cmd_pki_getMixDescriptorCounter, s.votingEpoch)
-		chResponse, err = s.chainBridge.Command(chCommand, nil)
-		if err != nil {
-			return fmt.Errorf("state: ChainBridge command error: %v", err)
-		}
-		numDescriptors, err := s.chainBridge.GetDataUInt(chResponse)
-		if err != nil && err != chainbridge.ErrNoData {
-			return fmt.Errorf("state: ChainBridge data error: %v", err)
-		}
+		numDescriptors, err := s.chPKIGetMixDescriptorCounter(s.votingEpoch)
 
 		if s.genesisEpoch == 0 {
 			// if no descriptors, the pki probably started too late in the epoch
@@ -306,13 +298,9 @@ func (s *state) update() error {
 			}
 
 			// get genesis epoch from appchain
-			chResponse, err := s.chainBridge.Command(chainbridge.Cmd_pki_getGenesisEpoch, nil)
+			genesisEpoch, err := s.chPKIGetGenesisEpoch()
 			if err != nil {
-				return fmt.Errorf("state: ChainBridge command error: %v", err)
-			}
-			genesisEpoch, err := s.chainBridge.GetDataUInt(chResponse)
-			if err != nil {
-				return fmt.Errorf("state: ChainBridge data error: %v", err)
+				return err
 			}
 
 			// if appchain has descriptors, it also has genesis epoch, so set it here
@@ -322,27 +310,7 @@ func (s *state) update() error {
 		s.log.Debugf("pki: ⭐ Generating doc for epoch %d, elapsed: %s (> %s), remaining time: %s", s.votingEpoch, elapsed, DescriptorUploadDeadline, nextEpoch)
 
 		// get descriptors from appchain for the approaching epoch
-		descriptors := []*pki.MixDescriptor{}
-		for i := 0; i < int(numDescriptors); i++ {
-			chCommand := fmt.Sprintf(chainbridge.Cmd_pki_getMixDescriptorByIndex, s.votingEpoch, i)
-			chResponse, err := s.chainBridge.Command(chCommand, nil)
-			if err != nil {
-				s.log.Error("ChainBridge command error: %v", err)
-				continue
-			}
-			dataAsBytes, err := s.chainBridge.GetDataBytes(chResponse)
-			if err != nil {
-				s.log.Error("ChainBridge data error: %v", err)
-				continue
-			}
-
-			var desc pki.MixDescriptor
-			if err = desc.UnmarshalBinary(dataAsBytes); err != nil {
-				s.log.Error("Failed to unmarshal descriptor: %v", err)
-				continue
-			}
-			descriptors = append(descriptors, &desc)
-		}
+		descriptors, err := s.chPKIGetMixDescriptors(s.votingEpoch)
 
 		var zeros [32]byte
 		doc := s.getDocument(descriptors, s.s.cfg.Parameters, zeros[:])
@@ -366,18 +334,10 @@ func (s *state) update() error {
 		}
 
 		// register the PKI doc with the appchain
-		payload, err := doc.MarshalCertificate()
+		err = s.chPKISetDocument(doc)
 		if err != nil {
-			return fmt.Errorf("state: failed to marshal PKI document: %v", err)
-		}
-		chCommand = fmt.Sprintf(chainbridge.Cmd_pki_setDocument, s.votingEpoch)
-		chResponse, err = s.chainBridge.Command(chCommand, payload)
-		s.log.Debugf("ChainBridge response (%s): %+v\n", chCommand, chResponse)
-		if err != nil {
-			s.log.Error("ChainBridge command error: %v", err)
 			return err
 		}
-		// ignore the most likely chResponse.Error: "Document already exists for the epoch"
 
 		s.log.Debugf("pki: ✅ Generated doc for epoch %v: %s", s.votingEpoch, doc.String())
 	}
@@ -471,6 +431,104 @@ func (st *state) chNodesRegister(v *config.Node, isGatewayNode bool, isServiceNo
 
 	st.registeredLocalNodes[pk] = true
 	st.log.Noticef("Local node registered with Identifier '%s', Identity key hash '%x'", v.Identifier, pk)
+}
+
+func (s *state) chPKIGetGenesisEpoch() (uint64, error) {
+	chResponse, err := s.chainBridge.Command(chainbridge.Cmd_pki_getGenesisEpoch, nil)
+	if err != nil {
+		return 0, fmt.Errorf("state: ChainBridge command error: %v", err)
+	}
+	genesisEpoch, err := s.chainBridge.GetDataUInt(chResponse)
+	if err != nil {
+		return 0, fmt.Errorf("state: ChainBridge data error: %v", err)
+	}
+	return genesisEpoch, nil
+}
+
+func (s *state) chPKIGetDocument(epoch uint64) (*pki.Document, error) {
+	chCommand := fmt.Sprintf(chainbridge.Cmd_pki_getDocucment, epoch)
+	chResponse, err := s.chainBridge.Command(chCommand, nil)
+	if err != nil {
+		return nil, fmt.Errorf("state: ChainBridge command error: %v", err)
+	}
+
+	chDoc, err := s.chainBridge.GetDataBytes(chResponse)
+	if err != nil {
+		return nil, err
+	}
+
+	var doc pki.Document
+	if err = doc.UnmarshalCertificate(chDoc); err != nil {
+		return nil, fmt.Errorf("state: failed to unmarshal PKI document: %v", err)
+	} else {
+		s.log.Debugf("pki: ✅ Retrieved doc for epoch %v: %s", epoch, doc.String())
+		return &doc, nil
+	}
+}
+
+// register the PKI doc with the appchain
+func (s *state) chPKISetDocument(doc *pki.Document) error {
+	payload, err := doc.MarshalCertificate()
+	if err != nil {
+		return fmt.Errorf("state: failed to marshal PKI document: %v", err)
+	}
+	chCommand := fmt.Sprintf(chainbridge.Cmd_pki_setDocument, doc.Epoch)
+	chResponse, err := s.chainBridge.Command(chCommand, payload)
+	s.log.Debugf("ChainBridge response (%s): %+v", chCommand, chResponse)
+	if err != nil {
+		return fmt.Errorf("state: ChainBridge command error: %v", err)
+	}
+
+	// ignore the most likely chResponse.Error: "Document already exists for the epoch"
+	// if chResponse.Error != "" {
+	//   return fmt.Errorf("state: ChainBridge response error: %v", chResponse.Error)
+	// }
+
+	return nil
+}
+
+// get number of descriptors for the given epoch from appchain
+func (s *state) chPKIGetMixDescriptorCounter(epoch uint64) (uint64, error) {
+	chCommand := fmt.Sprintf(chainbridge.Cmd_pki_getMixDescriptorCounter, epoch)
+	chResponse, err := s.chainBridge.Command(chCommand, nil)
+	if err != nil {
+		return 0, fmt.Errorf("state: ChainBridge command error: %v", err)
+	}
+	numDescriptors, err := s.chainBridge.GetDataUInt(chResponse)
+	if err != nil && err != chainbridge.ErrNoData {
+		return 0, fmt.Errorf("state: ChainBridge data error: %v", err)
+	}
+	return numDescriptors, nil
+}
+
+func (s *state) chPKIGetMixDescriptors(epoch uint64) ([]*pki.MixDescriptor, error) {
+	numDescriptors, err := s.chPKIGetMixDescriptorCounter(epoch)
+	if err != nil {
+		return nil, err
+	}
+
+	descriptors := []*pki.MixDescriptor{}
+	for i := 0; i < int(numDescriptors); i++ {
+		chCommand := fmt.Sprintf(chainbridge.Cmd_pki_getMixDescriptorByIndex, epoch, i)
+		chResponse, err := s.chainBridge.Command(chCommand, nil)
+		if err != nil {
+			s.log.Error("ChainBridge command error: %v", err)
+			continue
+		}
+		dataAsBytes, err := s.chainBridge.GetDataBytes(chResponse)
+		if err != nil {
+			s.log.Error("ChainBridge data error: %v", err)
+			continue
+		}
+		var desc pki.MixDescriptor
+		if err = desc.UnmarshalBinary(dataAsBytes); err != nil {
+			s.log.Error("Failed to unmarshal descriptor: %v", err)
+			continue
+		}
+		descriptors = append(descriptors, &desc)
+	}
+
+	return descriptors, nil
 }
 
 func newState(s *Server) (*state, error) {
