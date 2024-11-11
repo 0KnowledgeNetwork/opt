@@ -10,6 +10,7 @@ import (
 
 	"gopkg.in/op/go-logging.v1"
 
+	"github.com/fxamacker/cbor/v2"
 	"github.com/katzenpost/hpqc/hash"
 	"github.com/katzenpost/hpqc/rand"
 	"github.com/katzenpost/hpqc/sign"
@@ -54,6 +55,7 @@ type state struct {
 	s           *Server
 	log         *logging.Logger
 	chainBridge *chainbridge.ChainBridge
+	ccbor       cbor.EncMode // a la katzenpost:core/pki/document.go
 
 	// locally registered node(s), only one allowed
 	// authority authentication for descriptor uploads is limited to this
@@ -458,7 +460,8 @@ func (s *state) chPKIGetDocument(epoch uint64) (*pki.Document, error) {
 	}
 
 	var doc pki.Document
-	if err = doc.UnmarshalCertificate(chDoc); err != nil {
+	// X: if err = doc.UnmarshalCertificate(chDoc); err != nil {
+	if err = cbor.Unmarshal(chDoc, (*pki.Document)(&doc)); err != nil {
 		return nil, fmt.Errorf("state: failed to unmarshal PKI document: %v", err)
 	} else {
 		s.log.Debugf("pki: ✅ Retrieved doc for epoch %v: %s", epoch, doc.String())
@@ -468,7 +471,14 @@ func (s *state) chPKIGetDocument(epoch uint64) (*pki.Document, error) {
 
 // register the PKI doc with the appchain
 func (s *state) chPKISetDocument(doc *pki.Document) error {
-	payload, err := doc.MarshalCertificate()
+	// register with the appchain an unsigned certificate-less doc,
+	// so authorities submit the same doc hash as their vote
+	// X: payload, err := doc.MarshalCertificate()
+	payload, err := s.ccbor.Marshal((*pki.Document)(doc))
+	if err != nil {
+		return err
+	}
+
 	if err != nil {
 		return fmt.Errorf("state: failed to marshal PKI document: %v", err)
 	}
@@ -535,6 +545,12 @@ func newState(s *Server) (*state, error) {
 	st := new(state)
 	st.s = s
 	st.log = s.logBackend.GetLogger("state")
+
+	ccbor, err := cbor.CanonicalEncOptions().EncMode()
+	if err != nil {
+		panic(err)
+	}
+	st.ccbor = ccbor
 
 	chainBridgeLogger := s.logBackend.GetLogger("state:chainBridge")
 	st.chainBridge = chainbridge.NewChainBridge(filepath.Join(s.cfg.Server.DataDir, "appchain.sock"))
