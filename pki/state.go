@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"gopkg.in/op/go-logging.v1"
@@ -23,6 +24,13 @@ import (
 )
 
 const (
+	stateBootstrap        = "bootstrap"
+	stateAcceptDescriptor = "accept_desc"
+	stateAcceptVote       = "accept_vote"
+	stateAcceptReveal     = "accept_reveal"
+	stateAcceptCert       = "accept_cert"
+	stateAcceptSignature  = "accept_signature"
+
 	publicKeyHashSize = 32
 )
 
@@ -48,6 +56,7 @@ var (
 )
 
 type state struct {
+	sync.RWMutex
 	worker.Worker
 
 	s           *Server
@@ -64,6 +73,128 @@ type state struct {
 
 	votingEpoch  uint64
 	genesisEpoch uint64
+	state        string
+}
+
+func (s *state) Halt() {
+	s.Worker.Halt()
+}
+
+func (s *state) worker() {
+	for {
+		select {
+		case <-s.HaltCh():
+			s.log.Debugf("authority: Terminating gracefully.")
+			return
+		case <-s.fsm():
+			s.log.Debugf("authority: Wakeup due to voting schedule.")
+		}
+	}
+}
+
+func (s *state) fsm() <-chan time.Time {
+	s.Lock()
+	var sleep time.Duration
+	epoch, elapsed, nextEpoch := epochtime.Now()
+	s.log.Debugf("✨ pki: FSM: Current epoch %d, remaining time: %s", epoch, nextEpoch)
+
+	switch s.state {
+	case stateBootstrap:
+		s.genesisEpoch = 0
+		s.backgroundFetchConsensus(epoch - 1)
+		s.backgroundFetchConsensus(epoch)
+		if elapsed > MixPublishDeadline {
+			s.log.Errorf("pki: FSM: Too late to vote this round, sleeping until %s", nextEpoch)
+			sleep = nextEpoch
+			s.votingEpoch = epoch + 2
+			s.state = stateBootstrap
+		} else {
+			s.votingEpoch = epoch + 1
+			s.state = stateAcceptDescriptor
+			sleep = MixPublishDeadline - elapsed
+			if sleep < 0 {
+				sleep = 0
+			}
+			s.log.Noticef("pki: FSM: Bootstrapping for %d", s.votingEpoch)
+		}
+
+	case stateAcceptDescriptor:
+		doc, err := s.getVote(s.votingEpoch)
+		if err == nil {
+			s.log.Noticef("pki: FSM: Sending vote for epoch %d in epoch %d", s.votingEpoch, epoch)
+			s.sendVoteToAppchain(doc, s.votingEpoch)
+		} else {
+			s.log.Errorf("Failed to compute vote for epoch %v: %s", s.votingEpoch, err)
+		}
+		s.state = stateAcceptVote
+		_, nowelapsed, _ := epochtime.Now()
+		sleep = AuthorityVoteDeadline - nowelapsed
+
+	case stateAcceptVote:
+		s.backgroundFetchConsensus(s.votingEpoch)
+		s.state = stateAcceptReveal
+		_, nowelapsed, _ := epochtime.Now()
+		sleep = AuthorityRevealDeadline - nowelapsed
+
+	case stateAcceptReveal:
+		s.state = stateAcceptCert
+		_, nowelapsed, _ := epochtime.Now()
+		sleep = AuthorityCertDeadline - nowelapsed
+
+	case stateAcceptCert:
+		s.state = stateAcceptSignature
+		_, nowelapsed, _ := epochtime.Now()
+		sleep = PublishConsensusDeadline - nowelapsed
+
+	case stateAcceptSignature:
+		s.state = stateBootstrap
+		sleep = nextEpoch
+
+	default:
+	}
+	s.pruneDocuments()
+	s.log.Debugf("✨ pki: FSM in state %v until %s", s.state, sleep)
+	s.Unlock()
+	return time.After(sleep)
+}
+
+// getVote produces a pki.Document using all MixDescriptors recorded with the appchain
+func (s *state) getVote(epoch uint64) (*pki.Document, error) {
+	// Is there a prior consensus? If so, obtain the GenesisEpoch
+	if d, ok := s.documents[s.votingEpoch-1]; ok {
+		s.log.Debugf("Restoring genesisEpoch %d from document cache", d.GenesisEpoch)
+		s.genesisEpoch = d.GenesisEpoch
+		d.PKISignatureScheme = s.s.cfg.Server.PKISignatureScheme
+	} else {
+		s.log.Debugf("Setting genesisEpoch %d from votingEpoch", s.votingEpoch)
+		s.genesisEpoch = s.votingEpoch
+	}
+
+	descriptors, err := s.chPKIGetMixDescriptors(epoch)
+	if err != nil {
+		return nil, err
+	}
+
+	// vote topology is irrelevent.
+	var zeros [32]byte
+	doc := s.getDocument(descriptors, s.s.cfg.Parameters, zeros[:])
+
+	// Note: For appchain-pki, upload unsigned document and sign it upon local save.
+	// simulate SignDocument's setting of doc version, required by IsDocumentWellFormed
+	doc.Version = pki.DocumentVersion
+
+	if err := pki.IsDocumentWellFormed(doc, nil); err != nil {
+		s.log.Errorf("pki: ❌ getVote: IsDocumentWellFormed: %s", err)
+		return nil, err
+	}
+
+	return doc, nil
+}
+
+func (s *state) sendVoteToAppchain(doc *pki.Document, epoch uint64) {
+	if err := s.chPKISetDocument(doc); err != nil {
+		s.log.Errorf("❌ sendVoteToAppchain: Error setting document for epoch %v: %v", epoch, err)
+	}
 }
 
 func (s *state) doSignDocument(signer sign.PrivateKey, verifier sign.PublicKey, d *pki.Document) ([]byte, error) {
@@ -247,112 +378,8 @@ func (s *state) onDescriptorUpload(rawDesc []byte, desc *pki.MixDescriptor, epoc
 	return nil
 }
 
-// generate docs based on the current epoch schedule
-// this is just a placeholder to trigger document generation
-// or retrieval from appchain
-func (s *state) update() error {
-	epoch, elapsed, nextEpoch := epochtime.Now()
-
-	// generate a doc for the next epoch after the descriptor upload deadline
-	if elapsed > DescriptorUploadDeadline && s.documents[epoch+1] == nil {
-		s.votingEpoch = epoch + 1
-
-		// sign and store PKI doc locally
-		cacheLocalDoc := func(doc *pki.Document) error {
-			_, err := s.doSignDocument(s.s.identityPrivateKey, s.s.identityPublicKey, doc)
-			if err != nil {
-				return err
-			}
-			s.documents[s.votingEpoch] = doc
-			s.pruneDocuments()
-			return nil
-		}
-
-		// retrieve PKI doc from appchain if one already exists for the epoch
-		chCommand := fmt.Sprintf(chainbridge.Cmd_pki_getDocucment, s.votingEpoch)
-		chResponse, err := s.chainBridge.Command(chCommand, nil)
-		if err != nil {
-			return fmt.Errorf("state: ChainBridge command error: %v", err)
-		}
-		chDoc, err := s.chainBridge.GetDataBytes(chResponse)
-		if err == nil {
-			var doc pki.Document
-			if err = doc.UnmarshalCertificate(chDoc); err != nil {
-				return fmt.Errorf("state: failed to unmarshal PKI document: %v", err)
-			} else {
-				s.log.Debugf("pki: ✅ Retrieved doc for epoch %v: %s", s.votingEpoch, doc.String())
-				return cacheLocalDoc(&doc)
-			}
-		}
-
-		// according to the appchain, there's not yet a PKI doc for the epoch, so generate it
-
-		// get number of descriptors for the given epoch from appchain
-		numDescriptors, err := s.chPKIGetMixDescriptorCounter(s.votingEpoch)
-
-		if s.genesisEpoch == 0 {
-			// if no descriptors, the pki probably started too late in the epoch
-			if numDescriptors == 0 {
-				s.log.Debugf("pki: Epoch %d is gone; a potential genesis epoch but no descriptors", s.votingEpoch)
-				return errGone
-			}
-
-			// get genesis epoch from appchain
-			genesisEpoch, err := s.chPKIGetGenesisEpoch()
-			if err != nil {
-				return err
-			}
-
-			// if appchain has descriptors, it also has genesis epoch, so set it here
-			s.genesisEpoch = genesisEpoch
-		}
-
-		s.log.Debugf("pki: ⭐ Generating doc for epoch %d, elapsed: %s (> %s), remaining time: %s", s.votingEpoch, elapsed, DescriptorUploadDeadline, nextEpoch)
-
-		// get descriptors from appchain for the approaching epoch
-		descriptors, err := s.chPKIGetMixDescriptors(s.votingEpoch)
-
-		var zeros [32]byte
-		doc := s.getDocument(descriptors, s.s.cfg.Parameters, zeros[:])
-
-		// Note: For appchain-pki, upload unsigned document and sign it upon serve.
-		// SignDocument sets doc version, required by IsDocumentWellFormed
-		doc.Version = pki.DocumentVersion
-
-		// FIXME: If doc is not wellformed, it currently spins up to this point
-		// continually trying to generate a doc, but not having any new information.
-		// In this case, the epoch failed.
-		err = pki.IsDocumentWellFormed(doc, nil)
-		if err != nil {
-			s.log.Errorf("pki: ❌ IsDocumentWellFormed: %s", err)
-			return errGone
-		}
-
-		// FIXME: retreive doc from appchain if it was registered while being generated here
-		if err := cacheLocalDoc(doc); err != nil {
-			return err
-		}
-
-		// register the PKI doc with the appchain
-		err = s.chPKISetDocument(doc)
-		if err != nil {
-			return err
-		}
-
-		s.log.Debugf("pki: ✅ Generated doc for epoch %v: %s", s.votingEpoch, doc.String())
-	}
-
-	return nil
-}
-
 func (s *state) documentForEpoch(epoch uint64) ([]byte, error) {
 	s.log.Debugf("pki: documentForEpoch(%v)", epoch)
-
-	// generate or retrieve docs based on the epoch schedule
-	err := s.update()
-	if err != nil {
-		return nil, err
-	}
 
 	// If we have a serialized document, return it.
 	if d, ok := s.documents[epoch]; ok {
@@ -428,9 +455,6 @@ func newState(s *Server) (*state, error) {
 		st.log.Fatalf("Error: Configuration found for more than one local node")
 	}
 
-	// set voting schedule at runtime
-	// TODO: retrieve from appchain
-
 	st.log.Debugf("State initialized with epoch Period: %s", epochtime.Period)
 	st.log.Debugf("State initialized with DescriptorUploadDeadline: %s", DescriptorUploadDeadline)
 	st.log.Debugf("State initialized with DocGenerationDeadline: %s", DocGenerationDeadline)
@@ -441,5 +465,41 @@ func newState(s *Server) (*state, error) {
 	epoch, elapsed, nextEpoch := epochtime.Now()
 	st.log.Debugf("Epoch: %d, elapsed: %s, remaining time: %s", epoch, elapsed, nextEpoch)
 
+	// Set the initial state to bootstrap
+	st.state = stateBootstrap
 	return st, nil
+}
+
+func (s *state) backgroundFetchConsensus(epoch uint64) {
+	if s.TryLock() {
+		panic("write lock not held in backgroundFetchConsensus(epoch)")
+	}
+
+	// If there isn't a consensus for the previous epoch, ask the appchain for a consensus.
+	_, ok := s.documents[epoch]
+	if !ok {
+		s.Go(func() {
+			doc, err := s.chPKIGetDocument(epoch)
+			if err != nil {
+				s.log.Debugf("pki: FetchConsensus: Failed to fetch document for epoch %v: %v", epoch, err)
+				return
+			}
+			s.Lock()
+			defer s.Unlock()
+
+			// It's possible that the state has changed
+			// if backgroundFetchConsensus was called
+			// multiple times during bootstrapping
+			if _, ok := s.documents[epoch]; !ok {
+				// sign the locally-stored document
+				_, err := s.doSignDocument(s.s.identityPrivateKey, s.s.identityPublicKey, doc)
+				if err != nil {
+					s.log.Errorf("pki: FetchConsensus: Error signing document for epoch %v: %v", epoch, err)
+					return
+				}
+				s.documents[epoch] = doc
+				s.log.Debugf("pki: FetchConsensus: ✅ Set doc for epoch %v: %s", epoch, doc.String())
+			}
+		})
+	}
 }

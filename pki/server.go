@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"sync"
 
+	"github.com/quic-go/quic-go"
 	"gopkg.in/op/go-logging.v1"
 
 	"github.com/katzenpost/hpqc/hash"
@@ -27,7 +28,6 @@ import (
 	"github.com/katzenpost/katzenpost/core/sphinx/geo"
 	"github.com/katzenpost/katzenpost/core/utils"
 	"github.com/katzenpost/katzenpost/http/common"
-	"github.com/quic-go/quic-go"
 
 	"github.com/0KnowledgeNetwork/opt/pki/config"
 )
@@ -188,6 +188,13 @@ func (s *Server) halt() {
 
 	// Wait for all the connections to terminate.
 	s.WaitGroup.Wait()
+
+	// Halt the state worker.
+	if s.state != nil {
+		s.state.Halt()
+		s.state = nil
+	}
+
 	close(s.fatalErrCh)
 
 	s.log.Notice("Shutdown complete.")
@@ -318,10 +325,11 @@ func New(cfg *config.Config) (*Server, error) {
 		s.Shutdown()
 	}()
 
-	// Start up the state machine.
+	// Start up the state worker.
 	if s.state, err = newState(s); err != nil {
 		return nil, err
 	}
+	s.state.Go(s.state.worker)
 
 	// Start up the listeners.
 	for _, v := range s.cfg.Server.Addresses {
