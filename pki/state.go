@@ -67,8 +67,7 @@ type state struct {
 	// authority authentication for descriptor uploads is limited to this
 	registeredLocalNodes map[[publicKeyHashSize]byte]bool
 
-	documents   map[uint64]*pki.Document
-	descriptors map[uint64]map[[publicKeyHashSize]byte]*pki.MixDescriptor
+	documents map[uint64]*pki.Document
 
 	votingEpoch  uint64
 	genesisEpoch uint64
@@ -304,11 +303,6 @@ func (s *state) pruneDocuments() {
 			delete(s.documents, e)
 		}
 	}
-	for e := range s.descriptors {
-		if e < cmpEpoch {
-			delete(s.descriptors, e)
-		}
-	}
 }
 
 // Ensure that the descriptor is from an allowed peer according to the appchain
@@ -452,7 +446,6 @@ func newState(s *Server) (*state, error) {
 	st.log.Debugf("State initialized with DocGenerationDeadline: %s", DocGenerationDeadline)
 
 	st.documents = make(map[uint64]*pki.Document)
-	st.descriptors = make(map[uint64]map[[publicKeyHashSize]byte]*pki.MixDescriptor)
 
 	epoch, elapsed, nextEpoch := epochtime.Now()
 	st.log.Debugf("Epoch: %d, elapsed: %s, remaining time: %s", epoch, elapsed, nextEpoch)
