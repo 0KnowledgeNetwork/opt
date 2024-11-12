@@ -49,7 +49,6 @@ var (
 	errInvalidTopology       = errors.New("authority: Invalid Topology")
 )
 
-// Custom epoch schedule for appchain PKI
 var (
 	DocGenerationDeadline = epochtime.Period * 7 / 8
 )
@@ -145,8 +144,18 @@ func (s *state) fsm() <-chan time.Time {
 		sleep = PublishConsensusDeadline - nowelapsed
 
 	case stateAcceptSignature:
-		s.state = stateBootstrap
-		sleep = nextEpoch
+		// See if consensus doc was retrieved from the appchain
+		_, ok := s.documents[epoch+1]
+		if ok {
+			s.state = stateAcceptDescriptor
+			sleep = MixPublishDeadline + nextEpoch
+			s.votingEpoch++
+		} else {
+			s.log.Error("No document for epoch %v", epoch+1)
+			s.state = stateBootstrap
+			s.votingEpoch = epoch + 2 // vote on epoch+2 in epoch+1
+			sleep = nextEpoch
+		}
 
 	default:
 	}
