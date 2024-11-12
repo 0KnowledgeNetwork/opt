@@ -27,9 +27,7 @@ const (
 	stateBootstrap        = "bootstrap"
 	stateAcceptDescriptor = "accept_desc"
 	stateAcceptVote       = "accept_vote"
-	stateAcceptReveal     = "accept_reveal"
-	stateAcceptCert       = "accept_cert"
-	stateAcceptSignature  = "accept_signature"
+	stateConfirmConsensus = "confirm_consensus"
 
 	publicKeyHashSize = 32
 )
@@ -39,18 +37,13 @@ const (
 // katzenpost:authority/voting/server/state.go
 // So, we preserve that aspect of the epoch schedule.
 var (
-	MixPublishDeadline       = epochtime.Period / 8
-	AuthorityVoteDeadline    = MixPublishDeadline + epochtime.Period/8
-	AuthorityRevealDeadline  = AuthorityVoteDeadline + epochtime.Period/8
-	AuthorityCertDeadline    = AuthorityRevealDeadline + epochtime.Period/8
-	PublishConsensusDeadline = AuthorityCertDeadline + epochtime.Period/8
+	MixPublishDeadline       = epochtime.Period * 1 / 8 // Do NOT change this
+	AuthorityVoteDeadline    = epochtime.Period * 2 / 8
+	PublishConsensusDeadline = epochtime.Period * 5 / 8 // Do NOT change this
+	DocGenerationDeadline    = epochtime.Period * 7 / 8
 	errGone                  = errors.New("authority: Requested epoch will never get a Document")
 	errNotYet                = errors.New("authority: Document is not ready yet")
 	errInvalidTopology       = errors.New("authority: Invalid Topology")
-)
-
-var (
-	DocGenerationDeadline = epochtime.Period * 7 / 8
 )
 
 type state struct {
@@ -93,7 +86,7 @@ func (s *state) fsm() <-chan time.Time {
 	s.Lock()
 	var sleep time.Duration
 	epoch, elapsed, nextEpoch := epochtime.Now()
-	s.log.Debugf("✨ pki: FSM: Current epoch %d, remaining time: %s", epoch, nextEpoch)
+	s.log.Debugf("Current epoch %d, remaining time: %s, state: %s", epoch, nextEpoch, s.state)
 
 	switch s.state {
 	case stateBootstrap:
@@ -101,7 +94,7 @@ func (s *state) fsm() <-chan time.Time {
 		s.backgroundFetchConsensus(epoch - 1)
 		s.backgroundFetchConsensus(epoch)
 		if elapsed > MixPublishDeadline {
-			s.log.Errorf("pki: FSM: Too late to vote this round, sleeping until %s", nextEpoch)
+			s.log.Errorf("Too late to vote this round, sleeping until %s", nextEpoch)
 			sleep = nextEpoch
 			s.votingEpoch = epoch + 2
 			s.state = stateBootstrap
@@ -112,13 +105,12 @@ func (s *state) fsm() <-chan time.Time {
 			if sleep < 0 {
 				sleep = 0
 			}
-			s.log.Noticef("pki: FSM: Bootstrapping for %d", s.votingEpoch)
+			s.log.Noticef("Bootstrapping for %d", s.votingEpoch)
 		}
-
 	case stateAcceptDescriptor:
 		doc, err := s.getVote(s.votingEpoch)
 		if err == nil {
-			s.log.Noticef("pki: FSM: Sending vote for epoch %d in epoch %d", s.votingEpoch, epoch)
+			s.log.Noticef("authority: FSM: Sending vote for epoch %d in epoch %d", s.votingEpoch, epoch)
 			s.sendVoteToAppchain(doc, s.votingEpoch)
 		} else {
 			s.log.Errorf("Failed to compute vote for epoch %v: %s", s.votingEpoch, err)
@@ -126,24 +118,12 @@ func (s *state) fsm() <-chan time.Time {
 		s.state = stateAcceptVote
 		_, nowelapsed, _ := epochtime.Now()
 		sleep = AuthorityVoteDeadline - nowelapsed
-
 	case stateAcceptVote:
 		s.backgroundFetchConsensus(s.votingEpoch)
-		s.state = stateAcceptReveal
-		_, nowelapsed, _ := epochtime.Now()
-		sleep = AuthorityRevealDeadline - nowelapsed
-
-	case stateAcceptReveal:
-		s.state = stateAcceptCert
-		_, nowelapsed, _ := epochtime.Now()
-		sleep = AuthorityCertDeadline - nowelapsed
-
-	case stateAcceptCert:
-		s.state = stateAcceptSignature
+		s.state = stateConfirmConsensus
 		_, nowelapsed, _ := epochtime.Now()
 		sleep = PublishConsensusDeadline - nowelapsed
-
-	case stateAcceptSignature:
+	case stateConfirmConsensus:
 		// See if consensus doc was retrieved from the appchain
 		_, ok := s.documents[epoch+1]
 		if ok {
@@ -156,11 +136,10 @@ func (s *state) fsm() <-chan time.Time {
 			s.votingEpoch = epoch + 2 // vote on epoch+2 in epoch+1
 			sleep = nextEpoch
 		}
-
 	default:
 	}
 	s.pruneDocuments()
-	s.log.Debugf("✨ pki: FSM in state %v until %s", s.state, sleep)
+	s.log.Debugf("authority: FSM in state %v until %s", s.state, sleep)
 	s.Unlock()
 	return time.After(sleep)
 }
