@@ -368,6 +368,9 @@ func (s *state) onDescriptorUpload(rawDesc []byte, desc *pki.MixDescriptor, epoc
 func (s *state) documentForEpoch(epoch uint64) ([]byte, error) {
 	s.log.Debugf("pki: documentForEpoch(%v)", epoch)
 
+	s.RLock()
+	defer s.RUnlock()
+
 	// If we have a serialized document, return it.
 	if d, ok := s.documents[epoch]; ok {
 		// XXX We should cache this
