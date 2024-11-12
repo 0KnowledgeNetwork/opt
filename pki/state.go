@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"sort"
 	"sync"
 	"time"
 
@@ -17,6 +18,7 @@ import (
 	"github.com/katzenpost/hpqc/sign"
 	"github.com/katzenpost/katzenpost/core/epochtime"
 	"github.com/katzenpost/katzenpost/core/pki"
+	"github.com/katzenpost/katzenpost/core/sphinx/constants"
 	"github.com/katzenpost/katzenpost/core/worker"
 
 	"github.com/0KnowledgeNetwork/appchain-agent/clients/go/chainbridge"
@@ -209,11 +211,14 @@ func (s *state) getDocument(descriptors []*pki.MixDescriptor, params *config.Par
 	// Assign nodes to layers.
 	var topology [][]*pki.MixDescriptor
 
-	// FIXME: Topology -- use the simplest as placeholder for now
 	// We prefer to not randomize the topology if there is an existing topology to avoid
 	// partitioning the client anonymity set when messages from an earlier epoch are
 	// differentiable as such because of topology violations in the present epoch.
-	topology = s.generateRandomTopology(nodes, srv)
+	if d, ok := s.documents[s.votingEpoch-1]; ok {
+		topology = s.generateTopology(nodes, d, srv)
+	} else {
+		topology = s.generateRandomTopology(nodes, srv)
+	}
 
 	nodesPerLayer := len(nodes) / s.s.cfg.Debug.Layers
 	lambdaG := computeLambdaGFromNodesPerLayer(s.s.cfg, nodesPerLayer)
@@ -245,6 +250,85 @@ func (s *state) getDocument(descriptors []*pki.MixDescriptor, params *config.Par
 		PKISignatureScheme: s.s.cfg.Server.PKISignatureScheme,
 	}
 	return doc
+}
+
+func (s *state) generateTopology(nodeList []*pki.MixDescriptor, doc *pki.Document, srv []byte) [][]*pki.MixDescriptor {
+	s.log.Debugf("Generating mix topology.")
+
+	nodeMap := make(map[[constants.NodeIDLength]byte]*pki.MixDescriptor)
+	for _, v := range nodeList {
+		id := hash.Sum256(v.IdentityKey)
+		nodeMap[id] = v
+	}
+
+	// TODO: consider strategies for balancing topology? Should this happen automatically?
+	//       the current strategy will rebalance by limiting the number of nodes that are
+	//       (re)inserted at each layer and placing these nodes into another layer.
+
+	// Since there is an existing network topology, use that as the basis for
+	// generating the mix topology such that the number of nodes per layer is
+	// approximately equal, and as many nodes as possible retain their existing
+	// layer assignment to minimise network churn.
+	// The srv is used, when available, to ensure the ordering of new nodes
+	// is deterministic between authorities
+	rng, err := rand.NewDeterministicRandReader(srv[:])
+	if err != nil {
+		s.log.Errorf("DeterministicRandReader() failed to initialize: %v", err)
+		s.s.fatalErrCh <- err
+	}
+	targetNodesPerLayer := len(nodeList) / s.s.cfg.Debug.Layers
+	topology := make([][]*pki.MixDescriptor, s.s.cfg.Debug.Layers)
+
+	// Assign nodes that still exist up to the target size.
+	for layer, nodes := range doc.Topology {
+		nodeIndexes := rng.Perm(len(nodes))
+
+		for _, idx := range nodeIndexes {
+			if len(topology[layer]) >= targetNodesPerLayer {
+				break
+			}
+
+			id := hash.Sum256(nodes[idx].IdentityKey)
+			if n, ok := nodeMap[id]; ok {
+				// There is a new descriptor with the same identity key,
+				// as an existing descriptor in the previous document,
+				// so preserve the layering.
+				topology[layer] = append(topology[layer], n)
+				delete(nodeMap, id)
+			}
+		}
+	}
+
+	// Flatten the map containing the nodes pending assignment.
+	toAssign := make([]*pki.MixDescriptor, 0, len(nodeMap))
+	for _, n := range nodeMap {
+		toAssign = append(toAssign, n)
+	}
+	// must sort toAssign by ID!
+	sortNodesByPublicKey(toAssign)
+
+	assignIndexes := rng.Perm(len(toAssign))
+
+	// Fill out any layers that are under the target size, by
+	// randomly assigning from the pending list.
+	idx := 0
+	for layer := range doc.Topology {
+		for len(topology[layer]) < targetNodesPerLayer {
+			n := toAssign[assignIndexes[idx]]
+			topology[layer] = append(topology[layer], n)
+			idx++
+		}
+	}
+
+	// Assign the remaining nodes.
+	for layer := 0; idx < len(assignIndexes); idx++ {
+		n := toAssign[assignIndexes[idx]]
+		topology[layer] = append(topology[layer], n)
+		layer++
+		layer = layer % len(topology)
+	}
+
+	return topology
 }
 
 func (s *state) generateRandomTopology(nodes []*pki.MixDescriptor, srv []byte) [][]*pki.MixDescriptor {
@@ -469,4 +553,12 @@ func (s *state) backgroundFetchConsensus(epoch uint64) {
 			}
 		})
 	}
+}
+
+func sortNodesByPublicKey(nodes []*pki.MixDescriptor) {
+	dTos := func(d *pki.MixDescriptor) string {
+		pk := hash.Sum256(d.IdentityKey)
+		return string(pk[:])
+	}
+	sort.Slice(nodes, func(i, j int) bool { return dTos(nodes[i]) < dTos(nodes[j]) })
 }
