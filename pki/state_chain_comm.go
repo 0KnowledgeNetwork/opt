@@ -17,6 +17,21 @@ import (
 	"github.com/0KnowledgeNetwork/opt/pki/config"
 )
 
+func (s *state) chNodesGet(name string) (*chainbridge.Node, error) {
+	chCommand := fmt.Sprintf(chainbridge.Cmd_nodes_getNode, name)
+	chResponse, err := s.chainBridge.Command(chCommand, nil)
+	if err != nil {
+		return nil, fmt.Errorf("state: ChainBridge command error: %v", err)
+	}
+
+	var node chainbridge.Node
+	if err = s.chainBridge.DataUnmarshal(chResponse, &node); err != nil {
+		return nil, err
+	}
+
+	return &node, nil
+}
+
 func (st *state) chNodesRegister(v *config.Node, isGatewayNode bool, isServiceNode bool) {
 	pkiSignatureScheme := signSchemes.ByName(st.s.cfg.Server.PKISignatureScheme)
 
@@ -89,9 +104,9 @@ func (s *state) chPKIGetDocument(epoch uint64) (*pki.Document, error) {
 	// X: if err = doc.UnmarshalCertificate(chDoc); err != nil {
 	if err = cbor.Unmarshal(chDoc, (*pki.Document)(&doc)); err != nil {
 		return nil, fmt.Errorf("state: failed to unmarshal PKI document: %v", err)
-	} else {
-		return &doc, nil
 	}
+
+	return &doc, nil
 }
 
 // register the PKI doc with the appchain

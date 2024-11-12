@@ -307,19 +307,9 @@ func (s *state) pruneDocuments() {
 
 // Ensure that the descriptor is from an allowed peer according to the appchain
 func (s *state) isDescriptorAuthorized(desc *pki.MixDescriptor) bool {
-	chCommand := fmt.Sprintf(chainbridge.Cmd_nodes_getNode, desc.Name)
-	chResponse, err := s.chainBridge.Command(chCommand, nil)
+	node, err := s.chNodesGet(desc.Name)
 	if err != nil {
-		s.log.Errorf("state: ChainBridge command error: %v", err)
-		return false
-	}
-
-	var node chainbridge.Node
-	err = s.chainBridge.DataUnmarshal(chResponse, &node)
-	if err != nil {
-		if err != chainbridge.ErrNoData {
-			s.log.Errorf("state: ChainBridge data error: %v", err)
-		}
+		s.log.Debugf("state: Failed to retrive node=%s from appchain: %v", desc.Name, err)
 		return false
 	}
 
@@ -361,7 +351,8 @@ func (s *state) onDescriptorUpload(rawDesc []byte, desc *pki.MixDescriptor, epoc
 		return fmt.Errorf("pki: ❌ Failed to set mix descriptor for node %d, epoch=%v: %v", desc.Name, epoch, err)
 	}
 
-	s.log.Noticef("pki: ✅ Submitted descriptor to appchain for Node name=%v, epoch=%v", desc.Name, epoch)
+	epochCurrent, _, _ := epochtime.Now()
+	s.log.Noticef("pki: ✅ Submitted descriptor to appchain for Node name=%v, epoch=%v (in epoch=%v)", desc.Name, epoch, epochCurrent)
 	return nil
 }
 
