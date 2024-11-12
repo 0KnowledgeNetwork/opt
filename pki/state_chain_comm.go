@@ -165,3 +165,23 @@ func (s *state) chPKIGetMixDescriptors(epoch uint64) ([]*pki.MixDescriptor, erro
 
 	return descriptors, nil
 }
+
+// Register the mix descriptor with the appchain, which will:
+// - reject redundant descriptors (even those that didn't change)
+// - reject descriptors if document for the epoch exists
+func (s *state) chPKISetMixDescriptor(desc *pki.MixDescriptor, epoch uint64) error {
+	payload, err := desc.MarshalBinary()
+	if err != nil {
+		return fmt.Errorf("state: failed to marshal descriptor: %v", err)
+	}
+	chCommand := fmt.Sprintf(chainbridge.Cmd_pki_setMixDescriptor, epoch, desc.Name)
+	chResponse, err := s.chainBridge.Command(chCommand, payload)
+	s.log.Debugf("ChainBridge response (%s): %+v", chCommand, chResponse)
+	if err != nil {
+		return fmt.Errorf("state: ChainBridge command error: %v", err)
+	}
+	if chResponse.Error != "" {
+		return fmt.Errorf("state: ChainBridge response error: %v", chResponse.Error)
+	}
+	return nil
+}

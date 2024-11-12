@@ -51,8 +51,7 @@ var (
 
 // Custom epoch schedule for appchain PKI
 var (
-	DescriptorUploadDeadline = MixPublishDeadline
-	DocGenerationDeadline    = epochtime.Period * 7 / 8
+	DocGenerationDeadline = epochtime.Period * 7 / 8
 )
 
 type state struct {
@@ -349,32 +348,26 @@ func (s *state) isDescriptorAuthorized(desc *pki.MixDescriptor) bool {
 
 func (s *state) onDescriptorUpload(rawDesc []byte, desc *pki.MixDescriptor, epoch uint64) error {
 	// Note: Caller ensures that the epoch is the current epoch +- 1.
+	pk := hash.Sum256(desc.IdentityKey)
 
-	_ = rawDesc // unused, but retain function interface
+	s.RLock()
+	doc := s.documents[epoch]
+	s.RUnlock()
 
-	_, elapsed, _ := epochtime.Now()
-	if elapsed > DescriptorUploadDeadline {
-		return fmt.Errorf("state: Node %v: Late descriptor upload for for epoch %v", desc.IdentityKey, epoch)
+	if doc != nil {
+		// If there is a document already, the descriptor is late, and will
+		// never appear in a document, so reject it.
+		return fmt.Errorf("pki: ❌ Node %x: Late descriptor upload for epoch %v", pk, epoch)
 	}
 
 	// Register the mix descriptor with the appchain, which will:
 	// - reject redundant descriptors (even those that didn't change)
 	// - reject descriptors if document for the epoch exists
-	payload, err := desc.MarshalBinary()
-	if err != nil {
-		return fmt.Errorf("state: failed to marshal descriptor: %v", err)
-	}
-	chCommand := fmt.Sprintf(chainbridge.Cmd_pki_setMixDescriptor, epoch, desc.Name)
-	chResponse, err := s.chainBridge.Command(chCommand, payload)
-	s.log.Debugf("ChainBridge response (%s): %+v", chCommand, chResponse)
-	if err != nil {
-		return fmt.Errorf("state: ChainBridge command error: %v", err)
-	}
-	if chResponse.Error != "" {
-		return fmt.Errorf("state: ChainBridge response error: %v", chResponse.Error)
+	if err := s.chPKISetMixDescriptor(desc, epoch); err != nil {
+		return fmt.Errorf("pki: ❌ Failed to set mix descriptor for node %d, epoch=%v: %v", desc.Name, epoch, err)
 	}
 
-	s.log.Noticef("Successfully submitted descriptor for id=%v, epoch=%v", desc.Name, epoch)
+	s.log.Noticef("pki: ✅ Submitted descriptor to appchain for Node name=%v, epoch=%v", desc.Name, epoch)
 	return nil
 }
 
@@ -456,7 +449,6 @@ func newState(s *Server) (*state, error) {
 	}
 
 	st.log.Debugf("State initialized with epoch Period: %s", epochtime.Period)
-	st.log.Debugf("State initialized with DescriptorUploadDeadline: %s", DescriptorUploadDeadline)
 	st.log.Debugf("State initialized with DocGenerationDeadline: %s", DocGenerationDeadline)
 
 	st.documents = make(map[uint64]*pki.Document)
