@@ -94,6 +94,7 @@ func (s *state) fsm() <-chan time.Time {
 
 	switch s.state {
 	case stateBootstrap:
+		// TODO: ensure network is ready and locally registered node is eligible for participation
 		s.genesisEpoch = 0
 		s.backgroundFetchConsensus(epoch - 1)
 		s.backgroundFetchConsensus(epoch)
@@ -112,7 +113,7 @@ func (s *state) fsm() <-chan time.Time {
 			s.log.Noticef("Bootstrapping for %d", s.votingEpoch)
 		}
 	case stateWaitBlockDesc:
-		// Wait for appchain block proudction of all registered descriptors
+		// Wait for appchain block production of all registered descriptors
 		s.state = stateAcceptDescriptor
 		sleep = DescriptorBlockDeadline - elapsed
 	case stateAcceptDescriptor:
@@ -170,6 +171,7 @@ func (s *state) getVote(epoch uint64) (*pki.Document, error) {
 	}
 
 	// vote topology is irrelevent.
+	// TODO: use an appchain block hash as srv
 	var zeros [32]byte
 	doc := s.getDocument(descriptors, s.s.cfg.Parameters, zeros[:])
 
@@ -515,7 +517,6 @@ func newState(s *Server) (*state, error) {
 	}
 
 	st.log.Debugf("State initialized with epoch Period: %s", epochtime.Period)
-	st.log.Debugf("State initialized with DocGenerationDeadline: %s", DocGenerationDeadline)
 
 	st.documents = make(map[uint64]*pki.Document)
 
