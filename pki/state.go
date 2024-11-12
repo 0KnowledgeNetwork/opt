@@ -27,6 +27,7 @@ import (
 
 const (
 	stateBootstrap        = "bootstrap"
+	stateWaitBlockDesc    = "wait_block_desc"
 	stateAcceptDescriptor = "accept_desc"
 	stateAcceptVote       = "accept_vote"
 	stateConfirmConsensus = "confirm_consensus"
@@ -40,7 +41,8 @@ const (
 // So, we preserve that aspect of the epoch schedule.
 var (
 	MixPublishDeadline       = epochtime.Period * 1 / 8 // Do NOT change this
-	AuthorityVoteDeadline    = epochtime.Period * 2 / 8
+	DescriptorBlockDeadline  = epochtime.Period * 2 / 8
+	AuthorityVoteDeadline    = epochtime.Period * 3 / 8
 	PublishConsensusDeadline = epochtime.Period * 5 / 8 // Do NOT change this
 	DocGenerationDeadline    = epochtime.Period * 7 / 8
 	errGone                  = errors.New("authority: Requested epoch will never get a Document")
@@ -102,13 +104,17 @@ func (s *state) fsm() <-chan time.Time {
 			s.state = stateBootstrap
 		} else {
 			s.votingEpoch = epoch + 1
-			s.state = stateAcceptDescriptor
+			s.state = stateWaitBlockDesc
 			sleep = MixPublishDeadline - elapsed
 			if sleep < 0 {
 				sleep = 0
 			}
 			s.log.Noticef("Bootstrapping for %d", s.votingEpoch)
 		}
+	case stateWaitBlockDesc:
+		// Wait for appchain block proudction of all registered descriptors
+		s.state = stateAcceptDescriptor
+		sleep = DescriptorBlockDeadline - elapsed
 	case stateAcceptDescriptor:
 		doc, err := s.getVote(s.votingEpoch)
 		if err == nil {
@@ -129,7 +135,7 @@ func (s *state) fsm() <-chan time.Time {
 		// See if consensus doc was retrieved from the appchain
 		_, ok := s.documents[epoch+1]
 		if ok {
-			s.state = stateAcceptDescriptor
+			s.state = stateWaitBlockDesc
 			sleep = MixPublishDeadline + nextEpoch
 			s.votingEpoch++
 		} else {
