@@ -1,4 +1,14 @@
-FROM ubuntu:latest AS builder
+FROM ubuntu:latest AS base
+
+# Install run-time dependencies
+RUN \
+  --mount=type=cache,target=/var/cache/apt \
+  --mount=type=cache,target=/var/lib/apt \
+  apt-get update && apt-get install -y --no-install-recommends \
+  ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
+
+FROM base AS builder
 
 ARG ENABLE_WARPED_EPOCH=false
 ARG KATZENPOST_DIR=/src/katzenpost
@@ -15,7 +25,6 @@ RUN \
   --mount=type=cache,target=/var/lib/apt \
   apt-get update && apt-get install -y --no-install-recommends \
   build-essential \
-  ca-certificates \
   git \
   wget
 
@@ -62,17 +71,9 @@ RUN --mount=type=cache,target="${GOCACHE}" \
   && build apps/walletshield walletshield
 
 
-FROM ubuntu:latest AS node
+FROM base AS node
 
 ARG DIR_BIN=/opt/zkn
-
-# Install run-time dependencies
-RUN \
-  --mount=type=cache,target=/var/cache/apt \
-  --mount=type=cache,target=/var/lib/apt \
-  apt-get update && apt-get install -y --no-install-recommends \
-  ca-certificates \
-  && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /dest ${DIR_BIN}
 
