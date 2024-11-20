@@ -1,4 +1,4 @@
-name: build
+name: Test Clients & Services
 on:
   pull_request:
     branches:
