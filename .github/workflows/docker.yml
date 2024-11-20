@@ -7,8 +7,10 @@ on:
   push:
     branches:
       - main
-    paths:
-      - ".github/workflows/docker.yml"
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+      - 'tests/**'
     tags:
       - "v*"
 
