@@ -70,6 +70,7 @@ func main() {
 	var testProbe bool
 	var testProbeCount int
 	var testProbeResponseDelay int
+	var testProbeSendDelay int
 
 	flag.StringVar(&configPath, "config", "", "file path of the client configuration TOML file")
 	flag.IntVar(&delayStart, "delay_start", 0, "max random seconds to delay start")
@@ -79,6 +80,7 @@ func main() {
 	flag.BoolVar(&testProbe, "probe", false, "send test probes instead of handling requests")
 	flag.IntVar(&testProbeCount, "probe_count", 1, "number of test probes to send")
 	flag.IntVar(&testProbeResponseDelay, "probe_response_delay", 0, "test probe response deplay")
+	flag.IntVar(&testProbeSendDelay, "probe_send_delay", 10, "test probe delay between probes")
 	flag.Parse()
 
 	if listenAddr == "" && !testProbe {
@@ -139,7 +141,7 @@ func main() {
 	}
 
 	if testProbe {
-		server.SendTestProbes(10*time.Second, testProbeCount, testProbeResponseDelay)
+		server.SendTestProbes(testProbeSendDelay, testProbeCount, testProbeResponseDelay)
 	} else {
 		http.HandleFunc("/", server.Handler)
 		err := http.ListenAndServe(listenAddr, nil)
@@ -217,7 +219,7 @@ func (s *Server) Handler(w http.ResponseWriter, req *http.Request) {
 	fmt.Fprintf(w, string(response.Payload))
 }
 
-func (s *Server) SendTestProbes(d time.Duration, testProbeCount int, testProbeResponseDelay int) {
+func (s *Server) SendTestProbes(testProbeSendDelay int, testProbeCount int, testProbeResponseDelay int) {
 	url := fmt.Sprintf("http://nowhere/_/probe/%d", testProbeResponseDelay)
 	req, err := http.NewRequest("GET", url, nil)
 	buf := new(bytes.Buffer)
@@ -265,6 +267,6 @@ func (s *Server) SendTestProbes(d time.Duration, testProbeCount int, testProbeRe
 			os.Exit(0)
 		}
 
-		time.Sleep(d)
+		time.Sleep(time.Duration(testProbeSendDelay) * time.Second)
 	}
 }
