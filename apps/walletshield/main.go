@@ -30,7 +30,7 @@ import (
 )
 
 var (
-	timeout          = time.Second * 45
+	timeout          = 20 // (default) context timeout
 	ProxyHTTPService = "http_proxy"
 
 	// Note: UserForwardPayloadLength should match the same value passed to genconfig.
@@ -51,7 +51,7 @@ func sendRequest(thin *thin.ThinClient, payload []byte) ([]byte, error) {
 	}
 	nodeId := hash.Sum256(target.MixDescriptor.IdentityKey)
 
-	timeoutCtx, _ := context.WithTimeout(context.TODO(), timeout)
+	timeoutCtx, _ := context.WithTimeout(context.TODO(), time.Duration(timeout)*time.Second)
 	return thin.BlockingSendMessage(timeoutCtx, payload, &nodeId, target.RecipientQueueID)
 }
 
@@ -81,6 +81,7 @@ func main() {
 	flag.IntVar(&testProbeCount, "probe_count", 1, "number of test probes to send")
 	flag.IntVar(&testProbeResponseDelay, "probe_response_delay", 0, "test probe response deplay")
 	flag.IntVar(&testProbeSendDelay, "probe_send_delay", 10, "test probe delay between probes")
+	flag.IntVar(&timeout, "timeout", timeout, "seconds to wait for a request")
 	flag.Parse()
 
 	if listenAddr == "" && !testProbe {
